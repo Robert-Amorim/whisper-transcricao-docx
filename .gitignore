@@ -1,0 +1,22 @@
+.venv/
+.venv311/
+__pycache__/
+*.pyc
+
+# Audio inputs and heavy media
+Audios/
+*.wav
+*.mp3
+*.mpeg
+*.ogg
+*.m4a
+*.flac
+
+# Generated documents
+*_transcricao*.docx
+~$*.docx
+
+# Editor / OS
+.vscode/
+Thumbs.db
+.DS_Store
