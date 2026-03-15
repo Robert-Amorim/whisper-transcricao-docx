@@ -2,6 +2,10 @@
 .venv311/
 __pycache__/
 *.pyc
+node_modules/
+.next/
+dist/
+coverage/
 
 # Audio inputs and heavy media
 Audios/
@@ -16,7 +20,21 @@ Audios/
 *_transcricao*.docx
 ~$*.docx
 
+# Runtime storage artifacts
+storage/uploads/
+storage/outputs/
+
 # Editor / OS
 .vscode/
 Thumbs.db
 .DS_Store
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# OCI credentials
+apps/api/.secrets/
+apps/api/.secret
+apps/api/.secret.*

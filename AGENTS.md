@@ -1,0 +1,29 @@
+# AGENTS.md
+
+## Skills
+A skill is a local instruction set stored in `SKILL.md`.
+
+### Available skills
+- `project-standards`: Use when implementing or reviewing code in this monorepo and you need consistent architecture, coding, testing, and delivery conventions. (file: `.codex/skills/project-standards/SKILL.md`)
+- `design-system-workflow`: Use when creating or changing UI, pages, components, or visual standards in `apps/web` and `docs/design`. (file: `.codex/skills/design-system-workflow/SKILL.md`)
+- `pr-release-gate`: Use before merge and before release/deploy to run a deterministic quality gate with pass/fail criteria, blockers, and rollback notes. (file: `.codex/skills/pr-release-gate/SKILL.md`)
+
+### How to use skills
+- Trigger rules:
+  - If the user names a skill (with `$skill-name` or plain text), use it.
+  - If the task clearly matches a skill description, use it.
+- Progressive disclosure:
+  - Read `SKILL.md` first.
+  - Read only the specific `references/` file needed for the current task.
+  - Use bundled scripts/assets when they exist.
+- Coordination:
+  - Prefer the minimal set of skills for the request.
+  - If coding and UI are both relevant, use this order: `project-standards` then `design-system-workflow`.
+  - If the task is merge/release readiness, apply `pr-release-gate` after implementation skills.
+- Fallback:
+  - If a skill is missing or blocked, state the issue briefly and continue with best effort.
+
+### Project default
+- For backend/shared changes (`apps/api`, `apps/worker`, `packages/shared`), default to `project-standards`.
+- For frontend/design changes (`apps/web`, `docs/design`), use both skills unless the task is purely visual.
+- Before merge or deploy, always apply `pr-release-gate`.

@@ -1,0 +1,4 @@
+interface:
+  display_name: "PR Release Gate"
+  short_description: "Checklist de qualidade para PR e release"
+  default_prompt: "Aplicar quality gate de PR/release antes de merge e deploy."

@@ -1,0 +1,33 @@
+{
+  "name": "whisper-transcricao-docx",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Plataforma de transcricao com Whisper (web + api + worker).",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run build --workspace @whisper-transcricao/shared && npm-run-all --parallel dev:redis dev:web dev:api dev:worker",
+    "dev:redis": "node scripts/dev-redis.js",
+    "dev:web": "npm run dev --workspace @whisper-transcricao/web",
+    "dev:api": "npm run dev --workspace @whisper-transcricao/api",
+    "dev:worker": "npm run dev --workspace @whisper-transcricao/worker",
+    "report:css:web": "node scripts/report-css-usage.mjs",
+    "seed:dashboard:api": "npm run seed:dashboard-mock --workspace @whisper-transcricao/api",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "smoke:artifacts": "node scripts/smoke/check-artifacts.mjs",
+    "smoke:contracts": "node scripts/smoke/check-contracts.mjs",
+    "smoke:e2e": "node scripts/smoke/run-e2e-api-worker.mjs",
+    "smoke": "npm run smoke:artifacts && npm run smoke:contracts",
+    "gate:pr": "npm run lint && npm run typecheck && npm run build && npm run smoke"
+  },
+  "devDependencies": {
+    "npm-run-all": "^4.1.5"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Design Workflow"
+  short_description: "Padrao de design system e handoff para web"
+  default_prompt: "Aplicar fluxo de design system para componentes e telas no apps/web."

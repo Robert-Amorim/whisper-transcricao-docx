@@ -1,0 +1,110 @@
+name: PR Gate
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  quality-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: whisper_transcricao
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      NODE_ENV: test
+      API_HOST: 127.0.0.1
+      API_PORT: 3333
+      API_EXTERNAL_URL: http://127.0.0.1:3333
+      DATABASE_URL: mysql://root:root@127.0.0.1:3306/whisper_transcricao
+      DB_HOST: 127.0.0.1
+      DB_PORT: "3306"
+      DB_NAME: whisper_transcricao
+      DB_USER: root
+      DB_PASS: root
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: "6379"
+      REDIS_DB: "0"
+      REDIS_PASSWORD: ""
+      TRANSCRIPTION_QUEUE: transcriptions
+      JWT_SECRET: ci-jwt-secret-with-at-least-16-chars
+      JWT_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 7d
+      UPLOAD_SIGNING_SECRET: ci-upload-signing-secret
+      MAX_UPLOAD_BYTES: "524288000"
+      UPLOAD_URL_TTL_SECONDS: "900"
+      UPLOADS_DIR: storage/uploads
+      OUTPUTS_DIR: storage/outputs
+      WHISPER_PROVIDER: simulation
+      WORKER_CONCURRENCY: "1"
+      OPENAI_API_KEY: ci-not-used-in-simulation
+      OPENAI_BASE_URL: https://api.openai.com/v1
+      OPENAI_WHISPER_MODEL: whisper-1
+      OPENAI_TIMEOUT_MS: "300000"
+      OPENAI_MAX_FILE_BYTES: "26214400"
+      PRICE_PER_MINUTE: "0.27"
+      VITE_API_BASE_URL: http://127.0.0.1:3333
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run database migrations
+        run: npx prisma migrate deploy --schema apps/api/prisma/schema.prisma
+
+      - name: Run PR quality gate
+        run: npm run gate:pr
+
+      - name: Start API and worker
+        run: |
+          node apps/api/dist/index.js > api.log 2>&1 &
+          echo $! > api.pid
+          node apps/worker/dist/index.js > worker.log 2>&1 &
+          echo $! > worker.pid
+
+      - name: Run end-to-end smoke
+        run: npm run smoke:e2e
+        env:
+          API_BASE_URL: http://127.0.0.1:3333
+          E2E_POLL_TIMEOUT_MS: "120000"
+
+      - name: Print logs
+        if: always()
+        run: |
+          echo "=== API LOG ==="
+          cat api.log || true
+          echo "=== WORKER LOG ==="
+          cat worker.log || true
+
+      - name: Stop API and worker
+        if: always()
+        run: |
+          if [ -f api.pid ]; then kill "$(cat api.pid)" || true; fi
+          if [ -f worker.pid ]; then kill "$(cat worker.pid)" || true; fi

@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="pt-BR"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#2b8cee",
+                        "background-light": "#f6f7f8",
+                        "background-dark": "#101922",
+                    },
+                    fontFamily: {
+                        "display": ["Inter"]
+                    },
+                    borderRadius: {"DEFAULT": "0.5rem", "lg": "0.75rem", "xl": "1.5rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<title>Whisper Transcrição - Login &amp; Registro</title>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 min-h-screen">
+<div class="flex min-h-screen items-center justify-center p-6">
+<div class="w-full max-w-[1280px] grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
+<!-- Left Column: Branding & Info -->
+<div class="lg:col-span-5 flex flex-col justify-between p-8 bg-slate-800/20 dark:bg-primary/5 rounded-xl border border-slate-200 dark:border-slate-800">
+<div>
+<div class="flex items-center gap-3 mb-8">
+<div class="bg-primary p-2 rounded-lg">
+<span class="material-symbols-outlined text-white text-3xl">graphic_eq</span>
+</div>
+<h1 class="text-3xl font-bold tracking-tight">Whisper</h1>
+</div>
+<h2 class="text-4xl font-extrabold mb-6 leading-tight">O Som da <span class="text-primary">Clareza</span></h2>
+<div class="space-y-6 mb-12">
+<div class="flex items-start gap-4">
+<div class="text-primary mt-1">
+<span class="material-symbols-outlined">verified</span>
+</div>
+<div>
+<h3 class="font-bold text-lg">Precisão</h3>
+<p class="text-slate-500 dark:text-slate-400">Transcrição fiel com inteligência artificial de ponta.</p>
+</div>
+</div>
+<div class="flex items-start gap-4">
+<div class="text-primary mt-1">
+<span class="material-symbols-outlined">bolt</span>
+</div>
+<div>
+<h3 class="font-bold text-lg">Velocidade</h3>
+<p class="text-slate-500 dark:text-slate-400">Resultados em tempo real ou processamento ultra-rápido.</p>
+</div>
+</div>
+<div class="flex items-start gap-4">
+<div class="text-primary mt-1">
+<span class="material-symbols-outlined">shield</span>
+</div>
+<div>
+<h3 class="font-bold text-lg">Segurança</h3>
+<p class="text-slate-500 dark:text-slate-400">Dados criptografados e conformidade com LGPD.</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Abstract Illustration -->
+<div class="relative h-48 w-full bg-gradient-to-br from-primary/20 to-transparent rounded-lg overflow-hidden border border-primary/10">
+<div class="absolute inset-0 opacity-30" data-alt="Abstract geometric dark blue patterns with soundwaves">
+<div class="absolute top-0 left-0 w-full h-full flex items-center justify-around px-4">
+<div class="w-1 h-12 bg-primary rounded-full"></div>
+<div class="w-1 h-24 bg-primary rounded-full"></div>
+<div class="w-1 h-32 bg-primary rounded-full"></div>
+<div class="w-1 h-16 bg-primary rounded-full"></div>
+<div class="w-1 h-28 bg-primary rounded-full"></div>
+<div class="w-1 h-20 bg-primary rounded-full"></div>
+<div class="w-1 h-36 bg-primary rounded-full"></div>
+</div>
+</div>
+<div class="absolute bottom-4 left-4 right-4 p-4 bg-slate-900/40 backdrop-blur-md rounded-lg border border-white/5">
+<p class="text-xs font-mono text-primary uppercase tracking-widest">System Status</p>
+<div class="flex items-center gap-2 mt-1">
+<span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+<span class="text-sm">Todos os sistemas operacionais</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Middle Column: Auth Card -->
+<div class="lg:col-span-4 flex flex-col gap-6">
+<div class="bg-white dark:bg-[#1c2127] rounded-xl border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden">
+<!-- Tabs -->
+<div class="flex border-b border-slate-200 dark:border-slate-800">
+<button class="flex-1 py-4 text-sm font-bold border-b-2 border-primary text-primary">Entrar</button>
+<button class="flex-1 py-4 text-sm font-bold text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">Criar conta</button>
+</div>
+<div class="p-8">
+<div class="space-y-4">
+<div class="space-y-2">
+<label class="text-sm font-medium">E-mail</label>
+<input class="w-full h-12 px-4 rounded-lg bg-slate-50 dark:bg-[#111418] border border-slate-200 dark:border-slate-800 focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all" placeholder="seu@email.com" type="email"/>
+</div>
+<div class="space-y-2">
+<div class="flex justify-between">
+<label class="text-sm font-medium">Senha</label>
+<a class="text-xs text-primary hover:underline" href="#">Esqueci a senha</a>
+</div>
+<div class="relative">
+<input class="w-full h-12 px-4 rounded-lg bg-slate-50 dark:bg-[#111418] border border-slate-200 dark:border-slate-800 focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all" placeholder="••••••••" type="password"/>
+<button class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">
+<span class="material-symbols-outlined text-xl">visibility</span>
+</button>
+</div>
+</div>
+<button class="w-full bg-primary hover:bg-primary/90 text-white font-bold py-3 rounded-lg transition-all mt-4">
+                                Acessar Painel
+                            </button>
+</div>
+<div class="mt-8 pt-8 border-t border-slate-200 dark:border-slate-800">
+<p class="text-xs text-center text-slate-500 mb-4">Ou continue com</p>
+<div class="grid grid-cols-2 gap-4">
+<button class="flex items-center justify-center gap-2 h-10 border border-slate-200 dark:border-slate-800 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+<img alt="Google Logo" class="w-4 h-4" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAYZ8eX1DdNPujOFfLTRv0bYP3bAlIYtTmLZldKIabIL-q60KmvsAlpwsLvxKBokU2woW5h5DKannmunU8ZDVvkcCfihu2CegpBcZRrxqgnAOCCN0O8Kro3oHJmtlTfrjQcowgGldLXqxrZyVy_hPVwaoqZ-KmfLu780Fk0x4ePma0YF-YMoz4B6X_s5f9ars82IManVQAQD4makVzAJF9MA9iJh5qkNg2JweuUMftETq_CxQ10AeRuKb6M-7DCvHf5MlOwh5BtZW0"/>
+<span class="text-sm">Google</span>
+</button>
+<button class="flex items-center justify-center gap-2 h-10 border border-slate-200 dark:border-slate-800 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+<img alt="LinkedIn Logo" class="w-4 h-4" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCR1jkfoAN4IqD-iYJ2pN7kFZRdIlhfpH05rOaiD92hCNSCXnuhzQo51HP2-3tdUfb39Mj-5EOMBoj0kJpwBc_wSyH5MWWUHXRPzgESuql1EMy8tzPBjnTBnCTWvWRJXILpBo2u2rd7XoKedRKbPb6hU5JTzDkO1Q-QPTeL7f4arGTAmBMyN_gz9d2olA1FDaIVrik7-HiNg1MEYdYZDa2DQIiQpDoNHhN_1BeMxnCPuWDfKOc16OnAyEn1eBAvrt84yALGGZjaBBM"/>
+<span class="text-sm">LinkedIn</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- API Integration Block -->
+<div class="bg-slate-900 rounded-xl border border-slate-800 p-6 overflow-hidden">
+<div class="flex items-center gap-2 mb-4 text-primary">
+<span class="material-symbols-outlined">terminal</span>
+<h4 class="text-sm font-bold uppercase tracking-wider">Integração API</h4>
+</div>
+<div class="space-y-3 font-mono text-xs">
+<div class="flex items-center gap-2 text-emerald-400">
+<span class="font-bold">POST</span>
+<span class="text-slate-400">/v1/auth/login</span>
+</div>
+<div class="flex items-center gap-2 text-emerald-400">
+<span class="font-bold">POST</span>
+<span class="text-slate-400">/v1/auth/register</span>
+</div>
+<div class="flex items-center gap-2 text-emerald-400">
+<span class="font-bold">POST</span>
+<span class="text-slate-400">/v1/auth/refresh</span>
+</div>
+<div class="flex items-center gap-2 text-primary">
+<span class="font-bold">GET</span>
+<span class="text-slate-400">/v1/me</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Right Column: Micro States -->
+<div class="lg:col-span-3 space-y-4">
+<h4 class="text-sm font-bold text-slate-500 uppercase tracking-widest px-2">Monitoramento</h4>
+<!-- State: Concluído -->
+<div class="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-lg flex items-center gap-3">
+<div class="bg-emerald-500 text-white p-1 rounded-full">
+<span class="material-symbols-outlined text-sm">check</span>
+</div>
+<div>
+<p class="text-sm font-bold">Concluído</p>
+<p class="text-xs text-emerald-500/70">Transcrição finalizada</p>
+</div>
+</div>
+<!-- State: Processando -->
+<div class="p-4 bg-primary/10 border border-primary/20 rounded-lg flex items-center gap-3">
+<div class="text-primary animate-spin">
+<span class="material-symbols-outlined text-sm">sync</span>
+</div>
+<div>
+<p class="text-sm font-bold">Processando</p>
+<p class="text-xs text-primary/70">IA analisando áudio...</p>
+</div>
+</div>
+<!-- State: Carregando -->
+<div class="p-4 bg-slate-800/50 border border-slate-700/50 rounded-lg flex items-center gap-3">
+<div class="w-4 h-4 border-2 border-slate-600 border-t-white rounded-full animate-spin"></div>
+<div>
+<p class="text-sm font-bold">Carregando</p>
+<p class="text-xs text-slate-500">Buscando dados</p>
+</div>
+</div>
+<!-- State: Erro -->
+<div class="p-4 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center gap-3">
+<div class="text-red-500">
+<span class="material-symbols-outlined text-xl">error</span>
+</div>
+<div>
+<p class="text-sm font-bold">Erro</p>
+<p class="text-xs text-red-500/70">Formato inválido</p>
+</div>
+</div>
+<!-- State: Vazio -->
+<div class="p-4 bg-slate-800/20 border border-dashed border-slate-700 rounded-lg flex flex-col items-center justify-center text-center py-6">
+<span class="material-symbols-outlined text-slate-600 mb-2">cloud_upload</span>
+<p class="text-xs text-slate-500">Nenhum arquivo ativo</p>
+</div>
+</div>
+</div>
+</div>
+</body></html>

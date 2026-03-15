@@ -1,0 +1,49 @@
+import { Link } from "react-router-dom";
+
+export default function MarketingHeader() {
+  return (
+    <header className="lp-header sticky top-0 z-50 flex items-center justify-between whitespace-nowrap border-b border-solid border-slate-200 bg-background-light px-6 py-4 dark:border-slate-800 dark:bg-background-dark">
+      <div className="lp-header-brand flex items-center gap-3">
+        <div className="size-8 text-primary">
+          <span className="material-symbols-outlined text-[32px]">graphic_eq</span>
+        </div>
+        <h2 className="text-lg font-bold leading-tight tracking-tight text-slate-900 dark:text-white">
+          Whisper Transcrição
+        </h2>
+      </div>
+
+      <div className="hidden flex-1 items-center justify-end gap-8 md:flex">
+        <nav className="flex items-center gap-8">
+          <a
+            className="lp-header-link text-sm font-medium text-slate-600 transition-colors hover:text-primary dark:text-slate-100 dark:hover:text-white"
+            href="#como-funciona"
+          >
+            Como funciona
+          </a>
+          <a
+            className="lp-header-link text-sm font-medium text-slate-600 transition-colors hover:text-primary dark:text-slate-100 dark:hover:text-white"
+            href="#precos"
+          >
+            Preços
+          </a>
+          <Link
+            className="lp-header-link text-sm font-medium text-slate-600 transition-colors hover:text-primary dark:text-slate-100 dark:hover:text-white"
+            to="/login"
+          >
+            Entrar
+          </Link>
+        </nav>
+        <Link
+          className="lp-header-cta flex h-10 cursor-pointer items-center justify-center overflow-hidden rounded-full bg-primary px-6 text-sm font-bold leading-normal tracking-wide text-white shadow-lg shadow-blue-500/20 transition-colors hover:bg-blue-600"
+          to="/login"
+        >
+          <span className="truncate">Começar Agora</span>
+        </Link>
+      </div>
+
+      <div className="text-slate-900 md:hidden dark:text-white">
+        <span className="material-symbols-outlined">menu</span>
+      </div>
+    </header>
+  );
+}

@@ -1,0 +1,566 @@
+{
+  "generatedAt": "2026-03-01T21:20:30.706Z",
+  "cssFile": "apps/web/src/styles/globals.css",
+  "sourceDir": "apps/web/src",
+  "summary": {
+    "totalClasses": 77,
+    "usedClasses": 77,
+    "unusedClasses": 0
+  },
+  "usedClasses": [
+    {
+      "className": "button",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/NotFoundPage.tsx"
+      ]
+    },
+    {
+      "className": "centered-state",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/NotFoundPage.tsx"
+      ]
+    },
+    {
+      "className": "db-status",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/TranscriptionDetailPage.tsx",
+        "apps/web/src/pages/TranscriptionResultPage.tsx"
+      ]
+    },
+    {
+      "className": "db-status-completed",
+      "mode": "dynamic",
+      "files": [
+        "apps/web/src/pages/TranscriptionDetailPage.tsx",
+        "apps/web/src/pages/TranscriptionResultPage.tsx"
+      ]
+    },
+    {
+      "className": "db-status-failed",
+      "mode": "dynamic",
+      "files": [
+        "apps/web/src/pages/TranscriptionDetailPage.tsx",
+        "apps/web/src/pages/TranscriptionResultPage.tsx"
+      ]
+    },
+    {
+      "className": "db-status-processing",
+      "mode": "dynamic",
+      "files": [
+        "apps/web/src/pages/TranscriptionDetailPage.tsx",
+        "apps/web/src/pages/TranscriptionResultPage.tsx"
+      ]
+    },
+    {
+      "className": "db-status-queued",
+      "mode": "dynamic",
+      "files": [
+        "apps/web/src/pages/TranscriptionDetailPage.tsx",
+        "apps/web/src/pages/TranscriptionResultPage.tsx"
+      ]
+    },
+    {
+      "className": "db-status-uploaded",
+      "mode": "dynamic",
+      "files": [
+        "apps/web/src/pages/TranscriptionDetailPage.tsx",
+        "apps/web/src/pages/TranscriptionResultPage.tsx"
+      ]
+    },
+    {
+      "className": "db-status-validating",
+      "mode": "dynamic",
+      "files": [
+        "apps/web/src/pages/TranscriptionDetailPage.tsx",
+        "apps/web/src/pages/TranscriptionResultPage.tsx"
+      ]
+    },
+    {
+      "className": "lp-btn-primary",
+      "mode": "static",
+      "files": [
+        "apps/web/src/components/landing/HeroSection.tsx"
+      ]
+    },
+    {
+      "className": "lp-btn-secondary",
+      "mode": "static",
+      "files": [
+        "apps/web/src/components/landing/HeroSection.tsx"
+      ]
+    },
+    {
+      "className": "lp-chip",
+      "mode": "static",
+      "files": [
+        "apps/web/src/components/landing/HeroSection.tsx"
+      ]
+    },
+    {
+      "className": "lp-copy",
+      "mode": "static",
+      "files": [
+        "apps/web/src/components/landing/CtaSection.tsx",
+        "apps/web/src/components/landing/HeroSection.tsx",
+        "apps/web/src/components/landing/HowItWorksSection.tsx",
+        "apps/web/src/components/landing/MarketingFooter.tsx",
+        "apps/web/src/components/landing/PricingSection.tsx",
+        "apps/web/src/components/landing/ProfessionalSection.tsx"
+      ]
+    },
+    {
+      "className": "lp-cta-panel",
+      "mode": "static",
+      "files": [
+        "apps/web/src/components/landing/CtaSection.tsx"
+      ]
+    },
+    {
+      "className": "lp-footer-section",
+      "mode": "static",
+      "files": [
+        "apps/web/src/components/landing/MarketingFooter.tsx"
+      ]
+    },
+    {
+      "className": "lp-header",
+      "mode": "static",
+      "files": [
+        "apps/web/src/components/landing/MarketingHeader.tsx"
+      ]
+    },
+    {
+      "className": "lp-header-cta",
+      "mode": "static",
+      "files": [
+        "apps/web/src/components/landing/MarketingHeader.tsx"
+      ]
+    },
+    {
+      "className": "lp-header-link",
+      "mode": "static",
+      "files": [
+        "apps/web/src/components/landing/MarketingHeader.tsx"
+      ]
+    },
+    {
+      "className": "lp-hero-title",
+      "mode": "static",
+      "files": [
+        "apps/web/src/components/landing/HeroSection.tsx"
+      ]
+    },
+    {
+      "className": "lp-media-card",
+      "mode": "static",
+      "files": [
+        "apps/web/src/components/landing/ProfessionalSection.tsx"
+      ]
+    },
+    {
+      "className": "lp-plan-card",
+      "mode": "static",
+      "files": [
+        "apps/web/src/components/landing/PricingSection.tsx"
+      ]
+    },
+    {
+      "className": "lp-plan-card-featured",
+      "mode": "static",
+      "files": [
+        "apps/web/src/components/landing/PricingSection.tsx"
+      ]
+    },
+    {
+      "className": "lp-preview-card",
+      "mode": "static",
+      "files": [
+        "apps/web/src/components/landing/HeroSection.tsx"
+      ]
+    },
+    {
+      "className": "lp-preview-overlay",
+      "mode": "static",
+      "files": [
+        "apps/web/src/components/landing/HeroSection.tsx"
+      ]
+    },
+    {
+      "className": "lp-preview-text",
+      "mode": "static",
+      "files": [
+        "apps/web/src/components/landing/HeroSection.tsx"
+      ]
+    },
+    {
+      "className": "lp-preview-text-muted",
+      "mode": "static",
+      "files": [
+        "apps/web/src/components/landing/HeroSection.tsx"
+      ]
+    },
+    {
+      "className": "lp-preview-time",
+      "mode": "static",
+      "files": [
+        "apps/web/src/components/landing/HeroSection.tsx"
+      ]
+    },
+    {
+      "className": "lp-pricing-section",
+      "mode": "static",
+      "files": [
+        "apps/web/src/components/landing/PricingSection.tsx"
+      ]
+    },
+    {
+      "className": "lp-section-title",
+      "mode": "static",
+      "files": [
+        "apps/web/src/components/landing/HowItWorksSection.tsx",
+        "apps/web/src/components/landing/PricingSection.tsx",
+        "apps/web/src/components/landing/ProfessionalSection.tsx"
+      ]
+    },
+    {
+      "className": "lp-standard",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/HomePage.tsx"
+      ]
+    },
+    {
+      "className": "lp-standard-shell",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/HomePage.tsx"
+      ]
+    },
+    {
+      "className": "lp-surface-card",
+      "mode": "static",
+      "files": [
+        "apps/web/src/components/landing/HowItWorksSection.tsx"
+      ]
+    },
+    {
+      "className": "lp-workflow-section",
+      "mode": "static",
+      "files": [
+        "apps/web/src/components/landing/HowItWorksSection.tsx"
+      ]
+    },
+    {
+      "className": "newtx-field",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/NewTranscriptionPage.tsx"
+      ]
+    },
+    {
+      "className": "newtx-file-picker",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/NewTranscriptionPage.tsx"
+      ]
+    },
+    {
+      "className": "newtx-grid",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/NewTranscriptionPage.tsx"
+      ]
+    },
+    {
+      "className": "newtx-loading",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/NewTranscriptionPage.tsx"
+      ]
+    },
+    {
+      "className": "newtx-main",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/NewTranscriptionPage.tsx"
+      ]
+    },
+    {
+      "className": "newtx-page",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/NewTranscriptionPage.tsx"
+      ]
+    },
+    {
+      "className": "newtx-panel",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/NewTranscriptionPage.tsx"
+      ]
+    },
+    {
+      "className": "newtx-side",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/NewTranscriptionPage.tsx"
+      ]
+    },
+    {
+      "className": "newtx-state-card",
+      "mode": "static",
+      "files": [
+        "apps/web/src/components/transcriptions/UploadStateGrid.tsx"
+      ]
+    },
+    {
+      "className": "newtx-states",
+      "mode": "static",
+      "files": [
+        "apps/web/src/components/transcriptions/UploadStateGrid.tsx"
+      ]
+    },
+    {
+      "className": "newtx-topbar",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/NewTranscriptionPage.tsx"
+      ]
+    },
+    {
+      "className": "newtx-topbar-actions",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/NewTranscriptionPage.tsx"
+      ]
+    },
+    {
+      "className": "newtx-upload-card",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/NewTranscriptionPage.tsx"
+      ]
+    },
+    {
+      "className": "result-export-card",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/TranscriptionResultPage.tsx"
+      ]
+    },
+    {
+      "className": "result-grid",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/TranscriptionResultPage.tsx"
+      ]
+    },
+    {
+      "className": "result-header",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/TranscriptionResultPage.tsx"
+      ]
+    },
+    {
+      "className": "result-header-actions",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/TranscriptionResultPage.tsx"
+      ]
+    },
+    {
+      "className": "result-inline",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/TranscriptionResultPage.tsx"
+      ]
+    },
+    {
+      "className": "result-inline-error",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/TranscriptionResultPage.tsx"
+      ]
+    },
+    {
+      "className": "result-main-card",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/TranscriptionResultPage.tsx"
+      ]
+    },
+    {
+      "className": "result-metadata-grid",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/TranscriptionResultPage.tsx"
+      ]
+    },
+    {
+      "className": "result-page",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/TranscriptionResultPage.tsx"
+      ]
+    },
+    {
+      "className": "result-state",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/TranscriptionResultPage.tsx"
+      ]
+    },
+    {
+      "className": "result-state-row",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/TranscriptionResultPage.tsx"
+      ]
+    },
+    {
+      "className": "result-status",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/TranscriptionResultPage.tsx"
+      ]
+    },
+    {
+      "className": "tx-card",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/TranscriptionDetailPage.tsx"
+      ]
+    },
+    {
+      "className": "tx-card-head",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/TranscriptionDetailPage.tsx"
+      ]
+    },
+    {
+      "className": "tx-grid",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/TranscriptionDetailPage.tsx"
+      ]
+    },
+    {
+      "className": "tx-header",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/TranscriptionDetailPage.tsx"
+      ]
+    },
+    {
+      "className": "tx-header-actions",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/TranscriptionDetailPage.tsx"
+      ]
+    },
+    {
+      "className": "tx-inline",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/TranscriptionDetailPage.tsx"
+      ]
+    },
+    {
+      "className": "tx-inline-error",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/TranscriptionDetailPage.tsx"
+      ]
+    },
+    {
+      "className": "tx-link-button",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/TranscriptionDetailPage.tsx"
+      ]
+    },
+    {
+      "className": "tx-main",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/TranscriptionDetailPage.tsx"
+      ]
+    },
+    {
+      "className": "tx-meta-list",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/TranscriptionDetailPage.tsx"
+      ]
+    },
+    {
+      "className": "tx-page",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/TranscriptionDetailPage.tsx"
+      ]
+    },
+    {
+      "className": "tx-progress-fill",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/TranscriptionDetailPage.tsx"
+      ]
+    },
+    {
+      "className": "tx-progress-track",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/TranscriptionDetailPage.tsx"
+      ]
+    },
+    {
+      "className": "tx-side",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/TranscriptionDetailPage.tsx"
+      ]
+    },
+    {
+      "className": "tx-state",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/TranscriptionDetailPage.tsx"
+      ]
+    },
+    {
+      "className": "tx-state-grid",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/TranscriptionDetailPage.tsx"
+      ]
+    },
+    {
+      "className": "tx-summary",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/TranscriptionDetailPage.tsx"
+      ]
+    },
+    {
+      "className": "tx-table",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/TranscriptionDetailPage.tsx"
+      ]
+    },
+    {
+      "className": "tx-table-wrap",
+      "mode": "static",
+      "files": [
+        "apps/web/src/pages/TranscriptionDetailPage.tsx"
+      ]
+    }
+  ],
+  "unusedClasses": []
+}

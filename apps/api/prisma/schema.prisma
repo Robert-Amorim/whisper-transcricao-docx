@@ -1,0 +1,161 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum PaymentProvider {
+  mercado_pago
+}
+
+enum PaymentStatus {
+  pending
+  approved
+  rejected
+  expired
+}
+
+enum JobStatus {
+  uploaded
+  validating
+  queued
+  processing
+  completed
+  failed
+}
+
+enum LedgerType {
+  credit
+  hold
+  capture
+  refund
+  adjustment
+}
+
+enum ChunkStatus {
+  queued
+  processing
+  completed
+  failed
+}
+
+enum OutputFormat {
+  txt
+  srt
+}
+
+model User {
+  id            String            @id @default(cuid())
+  name          String
+  email         String            @unique
+  passwordHash  String            @map("password_hash")
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+  wallet        Wallet?
+  payments      Payment[]
+  jobs          TranscriptionJob[]
+  ledgerEntries WalletLedger[]
+
+  @@map("users")
+}
+
+model Wallet {
+  id               String   @id @default(cuid())
+  userId           String   @unique @map("user_id")
+  availableBalance Decimal  @default(0) @db.Decimal(12, 6) @map("available_balance")
+  heldBalance      Decimal  @default(0) @db.Decimal(12, 6) @map("held_balance")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("wallets")
+}
+
+model WalletLedger {
+  id             String           @id @default(cuid())
+  userId         String           @map("user_id")
+  type           LedgerType
+  amount         Decimal          @db.Decimal(12, 6)
+  jobId          String?          @map("job_id")
+  paymentId      String?          @map("payment_id")
+  idempotencyKey String           @unique @map("idempotency_key")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job            TranscriptionJob? @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  payment        Payment?         @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@map("wallet_ledger")
+}
+
+model Payment {
+  id                String        @id @default(cuid())
+  userId            String        @map("user_id")
+  provider          PaymentProvider
+  providerPaymentId String        @unique @map("provider_payment_id")
+  amount            Decimal       @db.Decimal(12, 6)
+  status            PaymentStatus
+  rawPayload        Json?         @map("raw_payload")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ledgerEntries     WalletLedger[]
+
+  @@index([status, createdAt])
+  @@map("payments")
+}
+
+model TranscriptionJob {
+  id             String              @id @default(cuid())
+  userId         String              @map("user_id")
+  status         JobStatus
+  sourceObjectKey String             @map("source_object_key")
+  language       String
+  durationSeconds Int?               @map("duration_seconds")
+  pricePerMinute Decimal             @db.Decimal(12, 6) @map("price_per_minute")
+  chargeAmount   Decimal?            @db.Decimal(12, 6) @map("charge_amount")
+  errorCode      String?             @map("error_code")
+  errorMessage   String?             @map("error_message")
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+  completedAt    DateTime?           @map("completed_at")
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chunks         TranscriptionChunk[]
+  outputs        JobOutput[]
+  ledgerEntries  WalletLedger[]
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@map("transcription_jobs")
+}
+
+model TranscriptionChunk {
+  id                String    @id @default(cuid())
+  jobId             String    @map("job_id")
+  chunkIndex        Int       @map("chunk_index")
+  startSec          Decimal?  @db.Decimal(12, 3) @map("start_sec")
+  endSec            Decimal?  @db.Decimal(12, 3) @map("end_sec")
+  status            ChunkStatus
+  providerRequestId String?   @map("provider_request_id")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  job               TranscriptionJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, chunkIndex])
+  @@map("transcription_chunks")
+}
+
+model JobOutput {
+  id        String       @id @default(cuid())
+  jobId     String       @map("job_id")
+  format    OutputFormat
+  objectKey String       @map("object_key")
+  sizeBytes Int          @map("size_bytes")
+  createdAt DateTime     @default(now()) @map("created_at")
+  job       TranscriptionJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, format])
+  @@map("job_outputs")
+}

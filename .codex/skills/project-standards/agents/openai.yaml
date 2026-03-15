@@ -1,0 +1,4 @@
+interface:
+  display_name: "Project Standards"
+  short_description: "Padrao de arquitetura e desenvolvimento do monorepo"
+  default_prompt: "Aplicar padroes do monorepo para implementar mudancas com consistencia."
