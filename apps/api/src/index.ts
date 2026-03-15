@@ -261,6 +261,7 @@ type UserAuthShape = {
 
 const app = Fastify({
   bodyLimit: env.MAX_UPLOAD_BYTES,
+  maxParamLength: 4096,
   logger: {
     level: env.NODE_ENV === "production" ? "info" : "debug"
   }
