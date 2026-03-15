@@ -15,7 +15,7 @@ function getNavClass(isActive: boolean) {
 
 export default function DashboardSidebar({ user, activeMenu = "dashboard" }: DashboardSidebarProps) {
   const displayName = user?.name?.trim() || "Usuário Admin";
-  const displayEmail = user?.email?.trim() || "admin@whisper.ai";
+  const displayEmail = user?.email?.trim() || "admin@voxora.ai";
 
   return (
     <aside className="flex w-64 flex-shrink-0 flex-col border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-background-dark">
@@ -24,7 +24,7 @@ export default function DashboardSidebar({ user, activeMenu = "dashboard" }: Das
           <span className="material-symbols-outlined text-2xl">graphic_eq</span>
         </div>
         <div className="flex flex-col">
-          <h1 className="text-base font-bold leading-tight">Whisper</h1>
+          <h1 className="text-base font-bold leading-tight">Voxora</h1>
           <p className="text-xs text-slate-500 dark:text-slate-400">SaaS de Áudio</p>
         </div>
       </div>

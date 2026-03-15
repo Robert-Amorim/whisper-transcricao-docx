@@ -10,7 +10,7 @@ export default function CtaSection() {
           </h2>
           <p className="mx-auto mb-10 max-w-2xl text-lg text-slate-300 lp-copy">
             Junte-se a milhares de profissionais que economizam horas de trabalho manual com o
-            Whisper Transcrição.
+            Voxora.
           </p>
           <Link
             className="inline-flex h-14 cursor-pointer items-center justify-center rounded-lg bg-white px-8 text-base font-bold text-slate-900 transition-all hover:scale-105 hover:bg-slate-100"

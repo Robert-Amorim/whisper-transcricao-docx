@@ -35,13 +35,13 @@ Este projeto usa Tailwind **local** (não CDN) para manter fidelidade visual e p
 
 ```bash
 # desenvolvimento
-npm run dev --workspace @whisper-transcricao/web
+npm run dev --workspace @voxora/web
 
 # build de validação
-npm run build --workspace @whisper-transcricao/web
+npm run build --workspace @voxora/web
 
 # typecheck
-npm run typecheck --workspace @whisper-transcricao/web
+npm run typecheck --workspace @voxora/web
 ```
 
 ## Tokens principais de cor

@@ -1,20 +1,20 @@
 {
-  "name": "whisper-transcricao-docx",
+  "name": "voxora-platform",
   "version": "0.1.0",
   "private": true,
-  "description": "Plataforma de transcricao com Whisper (web + api + worker).",
+  "description": "Plataforma Voxora de transcricao (web + api + worker).",
   "workspaces": [
     "apps/*",
     "packages/*"
   ],
   "scripts": {
-    "dev": "npm run build --workspace @whisper-transcricao/shared && npm-run-all --parallel dev:redis dev:web dev:api dev:worker",
+    "dev": "npm run build --workspace @voxora/shared && npm-run-all --parallel dev:redis dev:web dev:api dev:worker",
     "dev:redis": "node scripts/dev-redis.js",
-    "dev:web": "npm run dev --workspace @whisper-transcricao/web",
-    "dev:api": "npm run dev --workspace @whisper-transcricao/api",
-    "dev:worker": "npm run dev --workspace @whisper-transcricao/worker",
+    "dev:web": "npm run dev --workspace @voxora/web",
+    "dev:api": "npm run dev --workspace @voxora/api",
+    "dev:worker": "npm run dev --workspace @voxora/worker",
     "report:css:web": "node scripts/report-css-usage.mjs",
-    "seed:dashboard:api": "npm run seed:dashboard-mock --workspace @whisper-transcricao/api",
+    "seed:dashboard:api": "npm run seed:dashboard-mock --workspace @voxora/api",
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",

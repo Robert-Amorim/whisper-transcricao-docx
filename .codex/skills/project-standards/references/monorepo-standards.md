@@ -44,7 +44,7 @@ npm run build
 Targeted runs:
 
 ```powershell
-npm run dev --workspace @whisper-transcricao/web
-npm run dev --workspace @whisper-transcricao/api
-npm run dev --workspace @whisper-transcricao/worker
+npm run dev --workspace @voxora/web
+npm run dev --workspace @voxora/api
+npm run dev --workspace @voxora/worker
 ```

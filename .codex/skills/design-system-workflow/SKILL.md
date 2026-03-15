@@ -1,6 +1,6 @@
 ---
 name: design-system-workflow
-description: UI and design-system workflow for whisper-transcricao-docx. Use when creating or updating pages, components, styles, design tokens, or visual references in apps/web and docs/design, and when you need consistent handoff from design artifacts to React/Tailwind implementation.
+description: UI and design-system workflow for Voxora. Use when creating or updating pages, components, styles, design tokens, or visual references in apps/web and docs/design, and when you need consistent handoff from design artifacts to React/Tailwind implementation.
 ---
 
 # Design System Workflow

@@ -7,7 +7,7 @@ export default function MarketingFooter() {
             <div className="size-6 text-primary">
               <span className="material-symbols-outlined text-2xl">graphic_eq</span>
             </div>
-            <h3 className="font-bold text-slate-900 dark:text-white">Whisper Transcrição</h3>
+            <h3 className="font-bold text-slate-900 dark:text-white">Voxora</h3>
           </div>
           <p className="lp-copy text-sm leading-relaxed text-slate-500 dark:text-slate-300">
             Transformando áudio em conhecimento com o poder da inteligência artificial.
@@ -89,7 +89,7 @@ export default function MarketingFooter() {
       </div>
 
       <div className="lp-copy mx-auto mt-12 flex max-w-7xl flex-col items-center justify-between gap-4 border-t border-slate-100 pt-8 text-sm text-slate-500 md:flex-row dark:border-slate-800 dark:text-slate-300">
-        <p>© 2023 Whisper Transcrição. Todos os direitos reservados.</p>
+        <p>© 2023 Voxora. Todos os direitos reservados.</p>
         <div className="flex gap-4">
           <a className="hover:text-primary" href="#">
             <span className="material-symbols-outlined">language</span>

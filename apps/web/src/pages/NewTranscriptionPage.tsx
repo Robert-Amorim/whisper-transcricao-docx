@@ -108,7 +108,7 @@ export default function NewTranscriptionPage() {
     <main className="newtx-page">
       <header className="newtx-topbar">
         <div>
-          <p>Whisper SaaS</p>
+          <p>Voxora</p>
           <h1>Nova Transcricao</h1>
         </div>
         <div className="newtx-topbar-actions">

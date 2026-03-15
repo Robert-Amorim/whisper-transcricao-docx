@@ -1,4 +1,4 @@
-# whisper-transcricao-docx
+# voxora-platform
 
 Monorepo da plataforma de transcrição (web + api + worker), 100% em Node.js/TypeScript.
 
@@ -55,9 +55,9 @@ npm run dev
 Ou por serviço:
 
 ```powershell
-npm run dev --workspace @whisper-transcricao/web
-npm run dev --workspace @whisper-transcricao/api
-npm run dev --workspace @whisper-transcricao/worker
+npm run dev --workspace @voxora/web
+npm run dev --workspace @voxora/api
+npm run dev --workspace @voxora/worker
 ```
 
 ## Build
@@ -96,8 +96,8 @@ Plano versionado em:
 ## Prisma (API)
 
 ```powershell
-npm run prisma:generate --workspace @whisper-transcricao/api
-npm run prisma:migrate --workspace @whisper-transcricao/api
+npm run prisma:generate --workspace @voxora/api
+npm run prisma:migrate --workspace @voxora/api
 ```
 
 ## Variáveis importantes (Worker)

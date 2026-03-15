@@ -1,6 +1,6 @@
 import type { SessionTokens } from "./types";
 
-const SESSION_STORAGE_KEY = "whisper-transcricao.session.v1";
+const SESSION_STORAGE_KEY = "voxora.session.v1";
 
 function hasWindow() {
   return typeof window !== "undefined";

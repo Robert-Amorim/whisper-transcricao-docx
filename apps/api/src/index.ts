@@ -18,7 +18,7 @@ import {
   LEDGER_TYPES,
   OUTPUT_FORMATS,
   TRANSCRIPTION_JOB_NAME
-} from "@whisper-transcricao/shared";
+} from "@voxora/shared";
 import { z } from "zod";
 import {
   createOciObjectStorageService,
@@ -45,7 +45,7 @@ const envSchema = z.object({
   DATABASE_URL: z.string().trim().optional(),
   DB_HOST: z.string().default("localhost"),
   DB_PORT: z.coerce.number().int().min(1).max(65535).default(3306),
-  DB_NAME: z.string().min(1).default("whisper_transcricao"),
+  DB_NAME: z.string().min(1).default("voxora"),
   DB_USER: z.string().min(1).default("root"),
   DB_PASS: z.string().default("root"),
   REDIS_HOST: z.string().default("127.0.0.1"),

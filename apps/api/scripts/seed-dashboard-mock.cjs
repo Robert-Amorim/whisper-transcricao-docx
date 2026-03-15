@@ -28,7 +28,7 @@ function buildDatabaseUrl() {
 
   const host = process.env.DB_HOST || "localhost";
   const port = Number(process.env.DB_PORT || 3306);
-  const name = process.env.DB_NAME || "whisper_transcricao";
+  const name = process.env.DB_NAME || "voxora";
   const user = encodeURIComponent(process.env.DB_USER || "root");
   const pass = encodeURIComponent(process.env.DB_PASS || "root");
 
@@ -40,7 +40,7 @@ const prisma = new PrismaClient({
   datasourceUrl: databaseUrl
 });
 
-const demoEmail = (process.env.SEED_DEMO_EMAIL || "admin@whisper.ai").trim().toLowerCase();
+const demoEmail = (process.env.SEED_DEMO_EMAIL || "admin@voxora.ai").trim().toLowerCase();
 const demoName = (process.env.SEED_DEMO_NAME || "Usuário Admin").trim();
 const demoPassword = process.env.SEED_DEMO_PASSWORD || "Admin@123456";
 const outputsRoot = path.resolve(process.env.OUTPUTS_DIR || path.join(rootDir, "storage/outputs"));

@@ -1,6 +1,6 @@
 ---
 name: project-standards
-description: Monorepo engineering standards for whisper-transcricao-docx. Use when implementing, refactoring, reviewing, or planning code in apps/api, apps/worker, apps/web, packages/shared, scripts, or root configs, and when you need consistent architecture boundaries, naming, testing, quality gates, and delivery rules.
+description: Monorepo engineering standards for Voxora. Use when implementing, refactoring, reviewing, or planning code in apps/api, apps/worker, apps/web, packages/shared, scripts, or root configs, and when you need consistent architecture boundaries, naming, testing, quality gates, and delivery rules.
 ---
 
 # Project Standards

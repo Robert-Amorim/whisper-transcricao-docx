@@ -1,6 +1,6 @@
 ---
 name: pr-release-gate
-description: Quality gate for pull requests and releases in whisper-transcricao-docx. Use before merge, before deploy, when validating risky refactors, schema changes, auth changes, queue/worker behavior changes, or any delivery that needs explicit pass/fail criteria and rollback awareness.
+description: Quality gate for pull requests and releases in Voxora. Use before merge, before deploy, when validating risky refactors, schema changes, auth changes, queue/worker behavior changes, or any delivery that needs explicit pass/fail criteria and rollback awareness.
 ---
 
 # Pr Release Gate

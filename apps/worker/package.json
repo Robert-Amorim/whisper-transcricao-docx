@@ -1,19 +1,19 @@
 {
-  "name": "@whisper-transcricao/worker",
+  "name": "@voxora/worker",
   "version": "0.1.0",
   "private": true,
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "npm run build --workspace @whisper-transcricao/shared && tsc -p tsconfig.build.json",
-    "start": "npm run build --workspace @whisper-transcricao/shared && node dist/index.js",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "npm run build --workspace @voxora/shared && tsc -p tsconfig.build.json",
+    "start": "npm run build --workspace @voxora/shared && node dist/index.js",
+    "typecheck": "npm run build --workspace @voxora/shared && tsc -p tsconfig.json --noEmit",
     "lint": "npm run typecheck"
   },
   "dependencies": {
     "@prisma/client": "^6.6.0",
-    "@whisper-transcricao/shared": "*",
+    "@voxora/shared": "*",
     "bullmq": "^5.48.1",
     "dotenv": "^16.6.1",
     "oci-common": "^2.125.3",

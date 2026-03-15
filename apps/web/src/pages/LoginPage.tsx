@@ -87,7 +87,7 @@ export default function LoginPage() {
                 <div className="rounded-lg bg-primary p-2">
                   <span className="material-symbols-outlined text-3xl text-white">graphic_eq</span>
                 </div>
-                <h1 className="text-3xl font-bold tracking-tight">Whisper</h1>
+                <h1 className="text-3xl font-bold tracking-tight">Voxora</h1>
               </div>
               <h2 className="mb-6 text-4xl font-extrabold leading-tight">
                 O Som da <span className="text-primary">Clareza</span>

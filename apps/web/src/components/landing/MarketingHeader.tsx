@@ -8,7 +8,7 @@ export default function MarketingHeader() {
           <span className="material-symbols-outlined text-[32px]">graphic_eq</span>
         </div>
         <h2 className="text-lg font-bold leading-tight tracking-tight text-slate-900 dark:text-white">
-          Whisper Transcrição
+          Voxora
         </h2>
       </div>
 
