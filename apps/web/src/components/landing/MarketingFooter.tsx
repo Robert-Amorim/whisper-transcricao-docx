@@ -1,6 +1,6 @@
 export default function MarketingFooter() {
   return (
-    <footer className="lp-footer-section border-t border-slate-200 bg-white px-6 py-12 dark:border-slate-800 dark:bg-surface-dark">
+    <footer className="lp-footer-section border-t border-slate-200 bg-white px-6 py-12 dark:border-clarity-border dark:bg-surface-dark">
       <div className="mx-auto grid max-w-7xl grid-cols-1 gap-12 md:grid-cols-4">
         <div className="col-span-1 md:col-span-1">
           <div className="mb-4 flex items-center gap-2">
@@ -88,8 +88,8 @@ export default function MarketingFooter() {
         </div>
       </div>
 
-      <div className="lp-copy mx-auto mt-12 flex max-w-7xl flex-col items-center justify-between gap-4 border-t border-slate-100 pt-8 text-sm text-slate-500 md:flex-row dark:border-slate-800 dark:text-slate-300">
-        <p>© 2023 Voxora. Todos os direitos reservados.</p>
+      <div className="lp-copy mx-auto mt-12 flex max-w-7xl flex-col items-center justify-between gap-4 border-t border-slate-100 pt-8 text-sm text-slate-500 md:flex-row dark:border-clarity-border dark:text-slate-300">
+        <p>© 2026 Voxora. Todos os direitos reservados.</p>
         <div className="flex gap-4">
           <a className="hover:text-primary" href="#">
             <span className="material-symbols-outlined">language</span>

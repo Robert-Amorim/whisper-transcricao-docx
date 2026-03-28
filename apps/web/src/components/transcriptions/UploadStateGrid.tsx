@@ -19,11 +19,11 @@ export default function UploadStateGrid({
       </article>
       <article className={`newtx-state-card ${state === "error" ? "error" : ""}`}>
         <h3>Erro</h3>
-        <p>{state === "error" ? message : "Nenhum erro ate o momento."}</p>
+        <p>{state === "error" ? message : "Nenhum erro até o momento."}</p>
       </article>
       <article className={`newtx-state-card ${state === "success" ? "success" : ""}`}>
-        <h3>Concluido</h3>
-        <p>{state === "success" ? message : "Aguardando conclusao."}</p>
+        <h3>Concluído</h3>
+        <p>{state === "success" ? message : "Aguardando conclusão."}</p>
       </article>
       <article className="newtx-state-card empty">
         <h3>Vazio</h3>
