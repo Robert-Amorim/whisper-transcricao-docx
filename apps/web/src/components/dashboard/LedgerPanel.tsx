@@ -59,6 +59,11 @@ function getLedgerIcon(type: WalletLedgerEntry["type"]) {
 
 type LedgerPanelProps = {
   ledger: WalletLedgerEntry[];
+  total?: number;
+  hasMore?: boolean;
+  currentPage?: number;
+  onPageChange?: (page: number) => void;
+  pageSize?: number;
 };
 
 type DashboardLedgerItem = {
@@ -75,8 +80,16 @@ type DashboardLedgerItem = {
   };
 };
 
-export default function LedgerPanel({ ledger }: LedgerPanelProps) {
-  const items: DashboardLedgerItem[] = ledger.slice(0, 8).map((entry) => {
+export default function LedgerPanel({
+  ledger,
+  total = 0,
+  hasMore = false,
+  currentPage = 0,
+  onPageChange,
+  pageSize = 8
+}: LedgerPanelProps) {
+  const totalPages = total > 0 ? Math.ceil(total / pageSize) : 1;
+  const items: DashboardLedgerItem[] = ledger.map((entry) => {
     const icon = getLedgerIcon(entry.type);
     const signal = getLedgerAmountSignal(entry.type);
     return {
@@ -140,9 +153,36 @@ export default function LedgerPanel({ ledger }: LedgerPanelProps) {
           </div>
         )}
 
-        <button className="min-h-0 w-full rounded-lg border border-dashed border-slate-300 py-3 text-xs font-semibold text-slate-500 transition-all hover:border-primary hover:text-primary dark:border-slate-700">
-          Ver extrato completo
-        </button>
+        {onPageChange && totalPages > 1 ? (
+          <div className="flex items-center justify-between pt-2">
+            <span className="text-xs text-slate-500">
+              Página {currentPage + 1} de {totalPages}
+              {total > 0 ? ` · ${total} movimentações` : ""}
+            </span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={currentPage === 0}
+                onClick={() => onPageChange(currentPage - 1)}
+                className="min-h-0 rounded-lg border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 disabled:opacity-40 hover:text-primary dark:border-slate-700 dark:text-slate-400"
+              >
+                Anterior
+              </button>
+              <button
+                type="button"
+                disabled={!hasMore}
+                onClick={() => onPageChange(currentPage + 1)}
+                className="min-h-0 rounded-lg border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 disabled:opacity-40 hover:text-primary dark:border-slate-700 dark:text-slate-400"
+              >
+                Próxima
+              </button>
+            </div>
+          </div>
+        ) : (
+          total > pageSize ? (
+            <p className="text-center text-xs text-slate-500">{total} movimentações no total</p>
+          ) : null
+        )}
       </div>
     </aside>
   );

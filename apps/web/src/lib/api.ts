@@ -229,30 +229,22 @@ export async function getWallet() {
   });
 }
 
-export async function listWalletLedger(limit = 50, type?: WalletLedgerEntry["type"]) {
-  const query = new URLSearchParams({
-    limit: String(limit)
-  });
-  if (type) {
-    query.set("type", type);
-  }
-
-  return requestJson<{ items: WalletLedgerEntry[] }>(`/v1/wallet/ledger?${query.toString()}`, {
-    auth: true
-  });
+export async function listWalletLedger(params?: { limit?: number; offset?: number; type?: WalletLedgerEntry["type"] }) {
+  const query = new URLSearchParams({ limit: String(params?.limit ?? 50) });
+  if (params?.offset) query.set("offset", String(params.offset));
+  if (params?.type) query.set("type", params.type);
+  return requestJson<{ items: WalletLedgerEntry[]; total: number; hasMore: boolean }>(
+    `/v1/wallet/ledger?${query.toString()}`, { auth: true }
+  );
 }
 
-export async function listPayments(limit = 20, status?: PaymentStatus) {
-  const query = new URLSearchParams({
-    limit: String(limit)
-  });
-  if (status) {
-    query.set("status", status);
-  }
-
-  return requestJson<{ items: PaymentSummary[] }>(`/v1/payments?${query.toString()}`, {
-    auth: true
-  });
+export async function listPayments(params?: { limit?: number; offset?: number; status?: PaymentStatus }) {
+  const query = new URLSearchParams({ limit: String(params?.limit ?? 20) });
+  if (params?.offset) query.set("offset", String(params.offset));
+  if (params?.status) query.set("status", params.status);
+  return requestJson<{ items: PaymentSummary[]; total: number; hasMore: boolean }>(
+    `/v1/payments?${query.toString()}`, { auth: true }
+  );
 }
 
 export async function createPixPayment(payload: { amount: number }) {
@@ -273,17 +265,13 @@ export async function confirmPixPayment(paymentId: string) {
   );
 }
 
-export async function listTranscriptions(params?: { limit?: number; status?: JobStatus }) {
-  const query = new URLSearchParams({
-    limit: String(params?.limit ?? 20)
-  });
-  if (params?.status) {
-    query.set("status", params.status);
-  }
-
-  return requestJson<{ items: TranscriptionJob[] }>(`/v1/transcriptions?${query.toString()}`, {
-    auth: true
-  });
+export async function listTranscriptions(params?: { limit?: number; offset?: number; status?: JobStatus }) {
+  const query = new URLSearchParams({ limit: String(params?.limit ?? 20) });
+  if (params?.offset) query.set("offset", String(params.offset));
+  if (params?.status) query.set("status", params.status);
+  return requestJson<{ items: TranscriptionJob[]; total: number; hasMore: boolean }>(
+    `/v1/transcriptions?${query.toString()}`, { auth: true }
+  );
 }
 
 export async function getTranscription(id: string) {

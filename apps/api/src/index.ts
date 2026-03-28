@@ -238,11 +238,13 @@ const updateMeBodySchema = z
 
 const walletLedgerQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
   type: z.enum(LEDGER_TYPES).optional()
 });
 
 const paymentListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
+  offset: z.coerce.number().int().min(0).default(0),
   status: z.enum(PAYMENT_STATUSES).optional()
 });
 
@@ -288,6 +290,7 @@ const createTranscriptionBodySchema = z.object({
 
 const transcriptionListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
+  offset: z.coerce.number().int().min(0).default(0),
   status: z.enum(JOB_STATUSES).optional()
 });
 
@@ -1268,13 +1271,19 @@ async function registerRoutes() {
         where.type = query.type;
       }
 
-      const entries = await prisma.walletLedger.findMany({
-        where,
-        orderBy: { createdAt: "desc" },
-        take: query.limit
-      });
+      const [entries, total] = await Promise.all([
+        prisma.walletLedger.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          take: query.limit,
+          skip: query.offset
+        }),
+        prisma.walletLedger.count({ where })
+      ]);
 
       return reply.send({
+        total,
+        hasMore: query.offset + query.limit < total,
         items: entries.map((entry) => ({
           id: entry.id,
           type: entry.type,
@@ -1302,13 +1311,19 @@ async function registerRoutes() {
         where.status = query.status;
       }
 
-      const payments = await prisma.payment.findMany({
-        where,
-        orderBy: { createdAt: "desc" },
-        take: query.limit
-      });
+      const [payments, total] = await Promise.all([
+        prisma.payment.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          take: query.limit,
+          skip: query.offset
+        }),
+        prisma.payment.count({ where })
+      ]);
 
       return {
+        total,
+        hasMore: query.offset + query.limit < total,
         items: payments.map((payment) => serializePayment(payment))
       };
     }
@@ -1855,16 +1870,20 @@ async function registerRoutes() {
         where.status = query.status;
       }
 
-      const jobs = await prisma.transcriptionJob.findMany({
-        where,
-        orderBy: { createdAt: "desc" },
-        take: query.limit,
-        include: {
-          outputs: true
-        }
-      });
+      const [jobs, total] = await Promise.all([
+        prisma.transcriptionJob.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          take: query.limit,
+          skip: query.offset,
+          include: { outputs: true }
+        }),
+        prisma.transcriptionJob.count({ where })
+      ]);
 
       return {
+        total,
+        hasMore: query.offset + query.limit < total,
         items: jobs.map((job) => serializeTranscriptionJob(job))
       };
     }

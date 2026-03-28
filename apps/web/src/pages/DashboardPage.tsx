@@ -55,6 +55,15 @@ export default function DashboardPage() {
   const [jobsFeedbackTone, setJobsFeedbackTone] = useState<FeedbackTone>("neutral");
   const [retryingJobIds, setRetryingJobIds] = useState<string[]>([]);
 
+  const JOBS_PAGE_SIZE = 20;
+  const LEDGER_PAGE_SIZE = 8;
+  const [jobsPage, setJobsPage] = useState(0);
+  const [jobsTotal, setJobsTotal] = useState(0);
+  const [jobsHasMore, setJobsHasMore] = useState(false);
+  const [ledgerPage, setLedgerPage] = useState(0);
+  const [ledgerTotal, setLedgerTotal] = useState(0);
+  const [ledgerHasMore, setLedgerHasMore] = useState(false);
+
   const hasProcessingJobs = useMemo(
     () => jobs.some((job) => PROCESSING_STATUSES.includes(job.status)),
     [jobs]
@@ -134,7 +143,7 @@ export default function DashboardPage() {
   }, []);
 
   const loadDashboard = useCallback(
-    async (options?: { isRefresh?: boolean }) => {
+    async (options?: { isRefresh?: boolean; jobsPageOverride?: number; ledgerPageOverride?: number }) => {
       if (!options?.isRefresh) {
         setLoadState("loading");
       } else {
@@ -142,22 +151,27 @@ export default function DashboardPage() {
       }
       setLoadError("");
 
+      const currentJobsPage = options?.jobsPageOverride ?? jobsPage;
+      const currentLedgerPage = options?.ledgerPageOverride ?? ledgerPage;
+
       try {
         const [currentUser, currentWallet, currentJobs, currentLedger, currentPayments] =
           await Promise.all([
           getMe(),
           getWallet(),
-          listTranscriptions({
-            limit: 50
-          }),
-          listWalletLedger(20),
-          listPayments(20)
+          listTranscriptions({ limit: JOBS_PAGE_SIZE, offset: currentJobsPage * JOBS_PAGE_SIZE }),
+          listWalletLedger({ limit: LEDGER_PAGE_SIZE, offset: currentLedgerPage * LEDGER_PAGE_SIZE }),
+          listPayments({ limit: 20 })
         ]);
 
         setUser(currentUser);
         setWallet(currentWallet);
         setJobs(currentJobs.items);
+        setJobsTotal(currentJobs.total ?? 0);
+        setJobsHasMore(currentJobs.hasMore ?? false);
         setLedger(currentLedger.items);
+        setLedgerTotal(currentLedger.total ?? 0);
+        setLedgerHasMore(currentLedger.hasMore ?? false);
         setPayments(currentPayments.items);
         setLoadState("ready");
 
@@ -184,8 +198,18 @@ export default function DashboardPage() {
         setIsRefreshingData(false);
       }
     },
-    [navigate]
+    [navigate, jobsPage, ledgerPage]
   );
+
+  const handleJobsPageChange = useCallback((page: number) => {
+    setJobsPage(page);
+    void loadDashboard({ isRefresh: true, jobsPageOverride: page });
+  }, [loadDashboard]);
+
+  const handleLedgerPageChange = useCallback((page: number) => {
+    setLedgerPage(page);
+    void loadDashboard({ isRefresh: true, ledgerPageOverride: page });
+  }, [loadDashboard]);
 
   const handleCreatePixPayment = useCallback(async () => {
     const parsed = Number.parseFloat(topUpAmountInput.replace(",", "."));
@@ -337,10 +361,22 @@ export default function DashboardPage() {
                 retryingJobIds={retryingJobIds}
                 feedbackMessage={jobsFeedbackMessage}
                 feedbackTone={jobsFeedbackTone}
+                total={jobsTotal}
+                hasMore={jobsHasMore}
+                currentPage={jobsPage}
+                onPageChange={handleJobsPageChange}
+                pageSize={JOBS_PAGE_SIZE}
               />
 
               <div className="col-span-4 space-y-4">
-                <LedgerPanel ledger={ledger} />
+                <LedgerPanel
+                  ledger={ledger}
+                  total={ledgerTotal}
+                  hasMore={ledgerHasMore}
+                  currentPage={ledgerPage}
+                  onPageChange={handleLedgerPageChange}
+                  pageSize={LEDGER_PAGE_SIZE}
+                />
                 <CreditManagementPanel
                   amountInput={topUpAmountInput}
                   onAmountInputChange={setTopUpAmountInput}

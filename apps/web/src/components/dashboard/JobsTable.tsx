@@ -80,6 +80,11 @@ type JobsTableProps = {
   retryingJobIds: string[];
   feedbackMessage: string;
   feedbackTone: "neutral" | "success" | "error";
+  total?: number;
+  hasMore?: boolean;
+  currentPage?: number;
+  onPageChange?: (page: number) => void;
+  pageSize?: number;
 };
 
 type DashboardJobRow = {
@@ -126,8 +131,14 @@ export default function JobsTable({
   onRetryFailedJob,
   retryingJobIds,
   feedbackMessage,
-  feedbackTone
+  feedbackTone,
+  total = 0,
+  hasMore = false,
+  currentPage = 0,
+  onPageChange,
+  pageSize = 20
 }: JobsTableProps) {
+  const totalPages = total > 0 ? Math.ceil(total / pageSize) : 1;
   const tableRows: DashboardJobRow[] = jobs.map((job) => ({
     id: job.id,
     sourceObjectKey: getFileNameFromObjectKey(job.sourceObjectKey),
@@ -147,9 +158,9 @@ export default function JobsTable({
             GET /v1/transcriptions
           </span>
         </div>
-        <button type="button" className="min-h-0 text-sm font-medium text-primary hover:underline">
-          Ver todos
-        </button>
+        {total > 0 && (
+          <span className="text-xs text-slate-500">{total} job{total !== 1 ? "s" : ""}</span>
+        )}
       </div>
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
@@ -268,6 +279,32 @@ export default function JobsTable({
           </tbody>
         </table>
       </div>
+
+      {onPageChange && totalPages > 1 ? (
+        <div className="flex items-center justify-between px-1 pt-1">
+          <span className="text-xs text-slate-500">
+            Página {currentPage + 1} de {totalPages}
+          </span>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={currentPage === 0}
+              onClick={() => onPageChange(currentPage - 1)}
+              className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 disabled:opacity-40 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
+            >
+              Anterior
+            </button>
+            <button
+              type="button"
+              disabled={!hasMore}
+              onClick={() => onPageChange(currentPage + 1)}
+              className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 disabled:opacity-40 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
+            >
+              Próxima
+            </button>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
