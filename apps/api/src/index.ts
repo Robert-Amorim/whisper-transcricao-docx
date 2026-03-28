@@ -1,4 +1,5 @@
 import cors from "@fastify/cors";
+import helmet from "@fastify/helmet";
 import jwt from "@fastify/jwt";
 import rateLimit from "@fastify/rate-limit";
 import { Prisma, PrismaClient } from "@prisma/client";
@@ -91,7 +92,9 @@ const envSchema = z.object({
   MERCADO_PAGO_API_BASE_URL: z.string().url().default("https://api.mercadopago.com"),
   MERCADO_PAGO_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(15000),
   MERCADO_PAGO_WEBHOOK_URL: z.string().url().optional(),
-  PAYMENT_DESCRIPTION_PREFIX: z.string().default("Voxora")
+  PAYMENT_DESCRIPTION_PREFIX: z.string().default("Voxora"),
+  CORS_ALLOWED_ORIGINS: z.string().optional(),
+  REQUEST_TIMEOUT_MS: z.coerce.number().int().min(5000).max(600000).default(60000)
 });
 
 const env = envSchema.parse(process.env);
@@ -377,6 +380,7 @@ type UserAuthShape = {
 const app = Fastify({
   bodyLimit: env.MAX_UPLOAD_BYTES,
   maxParamLength: 4096,
+  requestTimeout: env.REQUEST_TIMEOUT_MS,
   logger: {
     level: env.NODE_ENV === "production" ? "info" : "debug"
   }
@@ -979,14 +983,28 @@ app.setErrorHandler((error, _request, reply) => {
 });
 
 async function registerRoutes() {
+  const corsOrigin = env.CORS_ALLOWED_ORIGINS
+    ? env.CORS_ALLOWED_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean)
+    : env.NODE_ENV === "production"
+      ? false
+      : true;
+
+  await app.register(helmet, {
+    contentSecurityPolicy: env.NODE_ENV === "production" ? undefined : false
+  });
+
   await app.register(cors, {
-    origin: true,
+    origin: corsOrigin,
     credentials: true
   });
 
   await app.register(rateLimit, {
     max: 120,
-    timeWindow: "1 minute"
+    timeWindow: "1 minute",
+    keyGenerator: (request) => {
+      const userId = (request as any).user?.id;
+      return userId ?? request.ip;
+    }
   });
 
   await app.register(jwt, {
@@ -999,7 +1017,7 @@ async function registerRoutes() {
     now: new Date().toISOString()
   }));
 
-  app.post("/v1/auth/register", async (request, reply) => {
+  app.post("/v1/auth/register", { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (request, reply) => {
     const body = registerBodySchema.parse(request.body);
     const email = body.email.trim().toLowerCase();
 
@@ -1065,7 +1083,7 @@ async function registerRoutes() {
     });
   });
 
-  app.post("/v1/auth/login", async (request, reply) => {
+  app.post("/v1/auth/login", { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (request, reply) => {
     const body = loginBodySchema.parse(request.body);
     const email = body.email.trim().toLowerCase();
 
@@ -1299,7 +1317,8 @@ async function registerRoutes() {
   app.post(
     "/v1/payments/pix",
     {
-      preHandler: [authenticate]
+      preHandler: [authenticate],
+      config: { rateLimit: { max: 10, timeWindow: "1 minute" } }
     },
     async (request, reply) => {
       const body = createPixPaymentBodySchema.parse(request.body);
@@ -1700,7 +1719,8 @@ async function registerRoutes() {
   app.post(
     "/v1/transcriptions",
     {
-      preHandler: [authenticate]
+      preHandler: [authenticate],
+      config: { rateLimit: { max: 20, timeWindow: "1 minute" } }
     },
     async (request, reply) => {
       const body = createTranscriptionBodySchema.parse(request.body);

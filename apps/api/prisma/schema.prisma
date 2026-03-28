@@ -87,6 +87,7 @@ model WalletLedger {
   payment        Payment?         @relation(fields: [paymentId], references: [id], onDelete: SetNull)
 
   @@index([userId, createdAt])
+  @@index([jobId])
   @@map("wallet_ledger")
 }
 
@@ -128,6 +129,7 @@ model TranscriptionJob {
 
   @@index([userId, createdAt])
   @@index([status, createdAt])
+  @@index([sourceObjectKey])
   @@map("transcription_jobs")
 }
 
