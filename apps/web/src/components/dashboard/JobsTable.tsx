@@ -121,7 +121,7 @@ function getFeedbackClassName(tone: JobsTableProps["feedbackTone"]) {
   if (tone === "error") {
     return "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300";
   }
-  return "border-slate-300 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800/40 dark:text-slate-300";
+  return "border-slate-300 bg-slate-50 text-slate-600 dark:border-clarity-border dark:bg-clarity-surface/40 dark:text-slate-300";
 }
 
 export default function JobsTable({
@@ -154,7 +154,7 @@ export default function JobsTable({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <h4 className="text-lg font-bold">Jobs recentes</h4>
-          <span className="rounded bg-slate-100 px-2 py-1 font-mono text-[10px] text-slate-400 dark:bg-slate-800">
+          <span className="rounded bg-slate-100 px-2 py-1 font-mono text-[10px] text-slate-400 dark:bg-clarity-surface">
             GET /v1/transcriptions
           </span>
         </div>
@@ -163,7 +163,7 @@ export default function JobsTable({
         )}
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-clarity-border dark:bg-clarity-surface">
         {feedbackMessage ? (
           <p className={`m-4 rounded-lg border px-3 py-2 text-xs ${getFeedbackClassName(feedbackTone)}`}>
             {feedbackMessage}
@@ -171,7 +171,7 @@ export default function JobsTable({
         ) : null}
         <table className="w-full border-collapse text-left">
           <thead>
-            <tr className="bg-slate-50 dark:bg-slate-800/50">
+            <tr className="bg-slate-50 dark:bg-clarity-surface-strong/50">
               <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Arquivo</th>
               <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Idioma</th>
               <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Criado em</th>
@@ -182,7 +182,7 @@ export default function JobsTable({
               <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Ações</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+          <tbody className="divide-y divide-slate-200 dark:divide-clarity-border">
             {loadState === "loading" ? (
               <tr>
                 <td className="px-6 py-6 text-sm text-slate-500" colSpan={6}>
@@ -232,7 +232,7 @@ export default function JobsTable({
                           <span className="text-xs italic text-slate-400">Aguardando...</span>
                         ) : (
                           <div className="flex items-center gap-2">
-                            <div className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                            <div className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-200 dark:bg-clarity-border">
                               <div
                                 className={`h-full ${status.progressBarClassName}`}
                                 style={{ width: `${status.progressPercent}%` }}
@@ -261,7 +261,7 @@ export default function JobsTable({
                           {row.detailsHref ? (
                             <Link
                               to={row.detailsHref}
-                              className="rounded p-1 text-slate-400 transition hover:bg-slate-100 hover:text-primary dark:hover:bg-slate-800"
+                              className="rounded p-1 text-slate-400 transition hover:bg-slate-100 hover:text-primary dark:hover:bg-clarity-surface"
                             >
                               <span className="material-symbols-outlined">{row.actionIcon}</span>
                             </Link>
@@ -290,7 +290,7 @@ export default function JobsTable({
               type="button"
               disabled={currentPage === 0}
               onClick={() => onPageChange(currentPage - 1)}
-              className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 disabled:opacity-40 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
+              className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 disabled:opacity-40 hover:bg-slate-50 dark:border-clarity-border dark:text-slate-400 dark:hover:bg-clarity-surface"
             >
               Anterior
             </button>
@@ -298,7 +298,7 @@ export default function JobsTable({
               type="button"
               disabled={!hasMore}
               onClick={() => onPageChange(currentPage + 1)}
-              className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 disabled:opacity-40 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
+              className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 disabled:opacity-40 hover:bg-slate-50 dark:border-clarity-border dark:text-slate-400 dark:hover:bg-clarity-surface"
             >
               Próxima
             </button>

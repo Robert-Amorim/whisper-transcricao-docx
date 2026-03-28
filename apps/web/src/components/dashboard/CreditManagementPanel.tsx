@@ -50,7 +50,7 @@ function getFeedbackClassName(tone: CreditManagementPanelProps["feedbackTone"]) 
   if (tone === "error") {
     return "border-red-500/30 bg-red-500/10 text-red-300";
   }
-  return "border-slate-300 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800/40 dark:text-slate-300";
+  return "border-slate-300 bg-slate-50 text-slate-600 dark:border-clarity-border dark:bg-clarity-surface/40 dark:text-slate-300";
 }
 
 export default function CreditManagementPanel({
@@ -69,7 +69,7 @@ export default function CreditManagementPanel({
   return (
     <section
       id="creditos"
-      className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900"
+      className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 dark:border-clarity-border dark:bg-clarity-surface"
     >
       <div className="flex items-center justify-between gap-4">
         <div>
@@ -83,7 +83,7 @@ export default function CreditManagementPanel({
         ) : null}
       </div>
 
-      <div className="rounded-lg border border-dashed border-slate-300 p-4 dark:border-slate-700">
+      <div className="rounded-lg border border-dashed border-slate-300 p-4 dark:border-clarity-border">
         <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">
           Valor da recarga (BRL)
         </label>
@@ -94,7 +94,7 @@ export default function CreditManagementPanel({
             step="0.01"
             value={amountInput}
             onChange={(event) => onAmountInputChange(event.target.value)}
-            className="h-10 min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-slate-700 dark:bg-slate-800"
+            className="h-10 min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-clarity-border dark:bg-clarity-surface"
             placeholder="Ex.: 20.00"
           />
           <button
@@ -118,7 +118,7 @@ export default function CreditManagementPanel({
         <article className="space-y-2 rounded-lg border border-primary/20 bg-primary/5 p-4">
           <p className="text-sm font-semibold text-primary">PIX pronto para pagamento</p>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Copia e cola: <code className="rounded bg-slate-100 px-1 py-0.5 dark:bg-slate-800">{activePix.pix.copyPasteCode}</code>
+            Copia e cola: <code className="rounded bg-slate-100 px-1 py-0.5 dark:bg-clarity-surface-strong">{activePix.pix.copyPasteCode}</code>
           </p>
           <p className="text-xs text-slate-500 dark:text-slate-400">
             Expira em: {formatDateTime(activePix.pix.expiresAt)}
@@ -134,7 +134,7 @@ export default function CreditManagementPanel({
             </a>
           ) : null}
           {activePix.pix.qrCodeBase64 ? (
-            <div className="mt-2 flex justify-center rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-950">
+            <div className="mt-2 flex justify-center rounded-lg border border-slate-200 bg-white p-3 dark:border-clarity-border dark:bg-clarity-canvas">
               <img
                 alt="QR Code PIX"
                 src={`data:image/png;base64,${activePix.pix.qrCodeBase64}`}
@@ -162,7 +162,7 @@ export default function CreditManagementPanel({
         </div>
 
         {payments.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-slate-300 px-3 py-4 text-xs text-slate-500 dark:border-slate-700">
+          <p className="rounded-lg border border-dashed border-slate-300 px-3 py-4 text-xs text-slate-500 dark:border-clarity-border">
             Ainda não há pagamentos registrados.
           </p>
         ) : (

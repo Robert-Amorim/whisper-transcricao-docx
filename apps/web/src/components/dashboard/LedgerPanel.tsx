@@ -108,15 +108,15 @@ export default function LedgerPanel({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <h4 className="text-lg font-bold">Atividade recente</h4>
-          <span className="rounded bg-slate-100 px-2 py-1 font-mono text-[10px] text-slate-400 dark:bg-slate-800">
+          <span className="rounded bg-slate-100 px-2 py-1 font-mono text-[10px] text-slate-400 dark:bg-clarity-surface">
             /v1/wallet/ledger
           </span>
         </div>
       </div>
 
-      <div className="space-y-6 rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+      <div className="space-y-6 rounded-xl border border-slate-200 bg-white p-6 dark:border-clarity-border dark:bg-clarity-surface">
         {items.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-slate-300 px-4 py-5 text-sm text-slate-500 dark:border-slate-700">
+          <p className="rounded-lg border border-dashed border-slate-300 px-4 py-5 text-sm text-slate-500 dark:border-clarity-border">
             Ainda não há movimentações na carteira.
           </p>
         ) : (
@@ -164,7 +164,7 @@ export default function LedgerPanel({
                 type="button"
                 disabled={currentPage === 0}
                 onClick={() => onPageChange(currentPage - 1)}
-                className="min-h-0 rounded-lg border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 disabled:opacity-40 hover:text-primary dark:border-slate-700 dark:text-slate-400"
+                className="min-h-0 rounded-lg border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 disabled:opacity-40 hover:text-primary dark:border-clarity-border dark:text-slate-400"
               >
                 Anterior
               </button>
@@ -172,7 +172,7 @@ export default function LedgerPanel({
                 type="button"
                 disabled={!hasMore}
                 onClick={() => onPageChange(currentPage + 1)}
-                className="min-h-0 rounded-lg border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 disabled:opacity-40 hover:text-primary dark:border-slate-700 dark:text-slate-400"
+                className="min-h-0 rounded-lg border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 disabled:opacity-40 hover:text-primary dark:border-clarity-border dark:text-slate-400"
               >
                 Próxima
               </button>

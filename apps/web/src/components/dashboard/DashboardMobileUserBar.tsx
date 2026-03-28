@@ -12,7 +12,7 @@ export default function DashboardMobileUserBar({
   onLogout
 }: DashboardMobileUserBarProps) {
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 md:hidden">
+    <section className="rounded-xl border border-slate-200 bg-white p-4 dark:border-clarity-border dark:bg-clarity-surface md:hidden">
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold">
           {user ? `${user.name} • ${jobsInProgress} em processamento` : "Usuário"}
@@ -20,7 +20,7 @@ export default function DashboardMobileUserBar({
         <button
           type="button"
           onClick={onLogout}
-          className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold dark:bg-slate-800"
+          className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold dark:bg-clarity-surface"
         >
           Sair
         </button>

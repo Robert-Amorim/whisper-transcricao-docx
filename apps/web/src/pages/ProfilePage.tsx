@@ -181,7 +181,7 @@ export default function ProfilePage() {
         <div className="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark">
           <DashboardSidebar user={null} activeMenu="settings" />
           <section className="grid min-w-0 flex-1 place-items-center p-8">
-            <article className="w-full max-w-xl rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+            <article className="w-full max-w-xl rounded-xl border border-slate-200 bg-white p-6 dark:border-clarity-border dark:bg-clarity-surface">
               <h2 className="text-xl font-bold">Perfil indisponível</h2>
               <p className="mt-2 text-sm text-red-400">{bootstrapError}</p>
               <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
@@ -190,7 +190,7 @@ export default function ProfilePage() {
               <div className="mt-4 flex gap-3">
                 <Link
                   to="/dashboard"
-                  className="inline-flex min-h-0 items-center rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+                  className="inline-flex min-h-0 items-center rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-200 dark:border-clarity-border dark:bg-clarity-surface dark:text-clarity-text dark:hover:bg-clarity-surface-strong"
                 >
                   Voltar ao dashboard
                 </Link>
@@ -225,7 +225,7 @@ export default function ProfilePage() {
             <div className="flex items-center gap-3">
               <Link
                 to="/dashboard"
-                className="inline-flex min-h-0 items-center rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+                className="inline-flex min-h-0 items-center rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-200 dark:border-clarity-border dark:bg-clarity-surface dark:text-clarity-text dark:hover:bg-clarity-surface-strong"
               >
                 Voltar ao dashboard
               </Link>
@@ -241,7 +241,7 @@ export default function ProfilePage() {
 
           <div className="flex-1 overflow-y-auto p-8">
             <div className="mx-auto grid max-w-6xl grid-cols-12 gap-6">
-              <article className="col-span-12 rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900 lg:col-span-7">
+              <article className="col-span-12 rounded-xl border border-slate-200 bg-white p-6 dark:border-clarity-border dark:bg-clarity-surface lg:col-span-7">
                 <div className="mb-6">
                   <h3 className="text-lg font-bold">Dados da conta</h3>
                   <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
@@ -295,7 +295,7 @@ export default function ProfilePage() {
               </article>
 
               <aside className="col-span-12 space-y-6 lg:col-span-5">
-                <article className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+                <article className="rounded-xl border border-slate-200 bg-white p-6 dark:border-clarity-border dark:bg-clarity-surface">
                   <div className="mb-6">
                     <h3 className="text-lg font-bold">Segurança</h3>
                     <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
@@ -356,14 +356,14 @@ export default function ProfilePage() {
                     <button
                       type="submit"
                       disabled={isSavingPassword}
-                      className="inline-flex min-h-0 items-center justify-center rounded-lg border border-slate-300 bg-slate-100 px-5 py-3 text-sm font-bold text-slate-800 transition hover:bg-slate-200 disabled:opacity-70 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+                      className="inline-flex min-h-0 items-center justify-center rounded-lg border border-slate-300 bg-slate-100 px-5 py-3 text-sm font-bold text-slate-800 transition hover:bg-slate-200 disabled:opacity-70 dark:border-clarity-border dark:bg-clarity-surface dark:text-clarity-text dark:hover:bg-clarity-surface-strong"
                     >
                       {isSavingPassword ? "Atualizando..." : "Atualizar senha"}
                     </button>
                   </form>
                 </article>
 
-                <article className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+                <article className="rounded-xl border border-slate-200 bg-white p-6 dark:border-clarity-border dark:bg-clarity-surface">
                   <h3 className="text-lg font-bold">Sessão e informações</h3>
                   <dl className="mt-4 space-y-2 text-sm text-slate-500 dark:text-slate-400">
                     <div className="flex items-center justify-between gap-4">

@@ -21,17 +21,17 @@ export default class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       return (
-        <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-slate-950 px-4 text-center text-white">
+        <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-clarity-canvas px-4 text-center text-clarity-text">
           <p className="text-5xl font-black text-red-500">500</p>
           <h1 className="text-2xl font-bold">Algo deu errado</h1>
-          <p className="max-w-sm text-slate-400">
+          <p className="max-w-sm text-clarity-text-muted">
             Ocorreu um erro inesperado. Recarregue a página ou volte ao dashboard.
           </p>
           <div className="flex gap-3">
             <button
               type="button"
               onClick={() => { this.setState({ hasError: false }); window.location.reload(); }}
-              className="rounded-xl border border-slate-700 px-5 py-2.5 text-sm font-bold text-slate-300 transition hover:bg-slate-800"
+              className="rounded-xl border border-clarity-border px-5 py-2.5 text-sm font-bold text-clarity-text-soft transition hover:bg-clarity-surface"
             >
               Recarregar
             </button>

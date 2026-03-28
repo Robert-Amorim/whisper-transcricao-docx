@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 export default function CtaSection() {
   return (
     <section className="lp-cta-section px-6 py-20">
-      <div className="lp-cta-panel relative mx-auto max-w-4xl overflow-hidden rounded-3xl bg-slate-900 p-8 text-center shadow-2xl dark:bg-primary md:p-16">
+      <div className="lp-cta-panel relative mx-auto max-w-4xl overflow-hidden rounded-3xl p-8 text-center shadow-2xl md:p-16">
         <div className="relative z-10">
           <h2 className="mb-6 text-3xl font-black tracking-tight text-white md:text-5xl">
             Pronto para acelerar seu trabalho?

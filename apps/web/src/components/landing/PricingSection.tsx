@@ -1,6 +1,6 @@
 export default function PricingSection() {
   return (
-    <section className="lp-pricing-section border-y border-slate-200 bg-slate-50 py-24 dark:border-slate-800 dark:bg-slate-900" id="precos">
+    <section className="lp-pricing-section border-y border-slate-200 bg-slate-50 py-24 dark:border-clarity-border dark:bg-clarity-canvas" id="precos">
       <div className="mx-auto max-w-7xl px-6">
         <div className="mb-16 text-center">
           <h2 className="lp-section-title mb-4 text-3xl font-black tracking-tight text-slate-900 dark:text-white md:text-4xl">
@@ -12,7 +12,7 @@ export default function PricingSection() {
         </div>
 
         <div className="mx-auto grid max-w-5xl grid-cols-1 gap-6 md:grid-cols-3">
-          <div className="lp-plan-card flex flex-col rounded-2xl border border-slate-200 bg-white p-8 shadow-sm transition-shadow hover:shadow-md dark:border-slate-700 dark:bg-surface-dark">
+          <div className="lp-plan-card flex flex-col rounded-2xl border border-slate-200 bg-white p-8 shadow-sm transition-shadow hover:shadow-md dark:border-clarity-border dark:bg-clarity-surface">
             <div className="mb-4">
               <h3 className="text-lg font-bold text-slate-900 dark:text-white">Básico</h3>
               <p className="lp-copy text-sm text-slate-500 dark:text-slate-200">Para uso ocasional</p>
@@ -21,7 +21,7 @@ export default function PricingSection() {
               <span className="text-4xl font-black text-slate-900 dark:text-white">R$29</span>
               <span className="lp-copy font-medium text-slate-500 dark:text-slate-200">/mês</span>
             </div>
-            <button className="mb-8 w-full rounded-lg bg-slate-100 px-4 py-3 font-bold text-slate-900 transition-colors hover:bg-slate-200 dark:bg-slate-800 dark:text-white dark:hover:bg-slate-700">
+            <button className="mb-8 w-full rounded-lg bg-slate-100 px-4 py-3 font-bold text-slate-900 transition-colors hover:bg-slate-200 dark:bg-clarity-surface dark:text-clarity-text dark:hover:bg-clarity-surface-strong">
               Escolher Básico
             </button>
             <ul className="lp-copy flex flex-col gap-3 text-sm text-slate-600 dark:text-slate-200">
@@ -75,7 +75,7 @@ export default function PricingSection() {
             </ul>
           </div>
 
-          <div className="lp-plan-card flex flex-col rounded-2xl border border-slate-200 bg-white p-8 shadow-sm transition-shadow hover:shadow-md dark:border-slate-700 dark:bg-surface-dark">
+          <div className="lp-plan-card flex flex-col rounded-2xl border border-slate-200 bg-white p-8 shadow-sm transition-shadow hover:shadow-md dark:border-clarity-border dark:bg-clarity-surface">
             <div className="mb-4">
               <h3 className="text-lg font-bold text-slate-900 dark:text-white">Empresarial</h3>
               <p className="lp-copy text-sm text-slate-500 dark:text-slate-200">Para grandes volumes</p>
@@ -83,7 +83,7 @@ export default function PricingSection() {
             <div className="mb-6 flex items-baseline gap-1">
               <span className="text-4xl font-black text-slate-900 dark:text-white">Custom</span>
             </div>
-            <button className="mb-8 w-full rounded-lg bg-slate-100 px-4 py-3 font-bold text-slate-900 transition-colors hover:bg-slate-200 dark:bg-slate-800 dark:text-white dark:hover:bg-slate-700">
+            <button className="mb-8 w-full rounded-lg bg-slate-100 px-4 py-3 font-bold text-slate-900 transition-colors hover:bg-slate-200 dark:bg-clarity-surface dark:text-clarity-text dark:hover:bg-clarity-surface-strong">
               Falar com Vendas
             </button>
             <ul className="lp-copy flex flex-col gap-3 text-sm text-slate-600 dark:text-slate-200">
