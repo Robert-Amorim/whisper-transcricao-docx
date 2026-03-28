@@ -1,4 +1,5 @@
 import cors from "@fastify/cors";
+import helmet from "@fastify/helmet";
 import jwt from "@fastify/jwt";
 import rateLimit from "@fastify/rate-limit";
 import { Prisma, PrismaClient } from "@prisma/client";
@@ -10,12 +11,13 @@ import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import dotenv from "dotenv";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, extname, resolve, sep } from "node:path";
+import { dirname, extname, isAbsolute, resolve, sep } from "node:path";
 import {
   ACCEPTED_UPLOAD_EXTENSIONS,
   ACCEPTED_UPLOAD_MIME_TYPES,
   JOB_STATUSES,
   LEDGER_TYPES,
+  PAYMENT_STATUSES,
   OUTPUT_FORMATS,
   TRANSCRIPTION_JOB_NAME
 } from "@voxora/shared";
@@ -24,6 +26,7 @@ import {
   createOciObjectStorageService,
   hasAnyOciConfig
 } from "./lib/object-storage";
+import { createMercadoPagoClient } from "./lib/mercado-pago";
 
 const envCandidates = [
   resolve(process.cwd(), ".env"),
@@ -53,6 +56,8 @@ const envSchema = z.object({
   REDIS_DB: z.coerce.number().int().min(0).default(0),
   REDIS_PASSWORD: z.string().optional(),
   TRANSCRIPTION_QUEUE: z.string().default("transcriptions"),
+  TRANSCRIPTION_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
+  TRANSCRIPTION_RETRY_DELAY_MS: z.coerce.number().int().min(100).max(600000).default(2000),
   API_EXTERNAL_URL: z.string().optional(),
   UPLOADS_DIR: z.string().default("storage/uploads"),
   OUTPUTS_DIR: z.string().default("storage/outputs"),
@@ -66,13 +71,75 @@ const envSchema = z.object({
   OCI_REGION: z.string().optional(),
   OCI_NAMESPACE: z.string().optional(),
   OCI_BUCKET: z.string().optional(),
-  OCI_READ_URL_TTL_MINUTES: z.coerce.number().int().min(1).max(43200).default(10080),
+  OCI_READ_URL_TTL_MINUTES: z.coerce.number().int().min(1).max(43200).default(60),
   JWT_SECRET: z.string().min(16).default("change-this-secret-to-a-secure-value"),
   JWT_EXPIRES_IN: z.string().default("15m"),
-  JWT_REFRESH_EXPIRES_IN: z.string().default("7d")
+  JWT_REFRESH_EXPIRES_IN: z.string().default("7d"),
+  SIGNUP_WELCOME_CREDIT: z.coerce.number().min(0).default(1),
+  PIX_MIN_AMOUNT: z.coerce.number().positive().default(5),
+  PIX_MAX_AMOUNT: z.coerce.number().positive().default(5000),
+  PIX_EXPIRES_MINUTES: z.coerce.number().int().min(5).max(1440).default(30),
+  PAYMENT_PROVIDER_MODE: z.enum(["mock", "mercado_pago"]).default("mock"),
+  PAYMENT_WEBHOOK_SIGNATURE_SECRET: z.string().optional(),
+  PAYMENT_WEBHOOK_SECRET: z.string().optional(),
+  PAYMENT_WEBHOOK_SIGNATURE_TOLERANCE_SECONDS: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .max(86400)
+    .default(300),
+  MERCADO_PAGO_ACCESS_TOKEN: z.string().optional(),
+  MERCADO_PAGO_API_BASE_URL: z.string().url().default("https://api.mercadopago.com"),
+  MERCADO_PAGO_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(15000),
+  MERCADO_PAGO_WEBHOOK_URL: z.string().url().optional(),
+  PAYMENT_DESCRIPTION_PREFIX: z.string().default("Voxora"),
+  CORS_ALLOWED_ORIGINS: z.string().optional(),
+  REQUEST_TIMEOUT_MS: z.coerce.number().int().min(5000).max(600000).default(60000)
 });
 
 const env = envSchema.parse(process.env);
+const monorepoRootDir = resolve(__dirname, "../../../");
+const signupWelcomeCredit = new Prisma.Decimal(env.SIGNUP_WELCOME_CREDIT.toFixed(6));
+const paymentWebhookSignatureSecret =
+  env.PAYMENT_WEBHOOK_SIGNATURE_SECRET &&
+  env.PAYMENT_WEBHOOK_SIGNATURE_SECRET.trim().length > 0
+    ? env.PAYMENT_WEBHOOK_SIGNATURE_SECRET.trim()
+    : null;
+const paymentWebhookSecret =
+  env.PAYMENT_WEBHOOK_SECRET && env.PAYMENT_WEBHOOK_SECRET.trim().length > 0
+    ? env.PAYMENT_WEBHOOK_SECRET.trim()
+    : null;
+const webhookSignatureToleranceMs = env.PAYMENT_WEBHOOK_SIGNATURE_TOLERANCE_SECONDS * 1000;
+const mercadoPagoAccessToken =
+  env.MERCADO_PAGO_ACCESS_TOKEN && env.MERCADO_PAGO_ACCESS_TOKEN.trim().length > 0
+    ? env.MERCADO_PAGO_ACCESS_TOKEN.trim()
+    : null;
+const mercadoPagoClient =
+  env.PAYMENT_PROVIDER_MODE === "mercado_pago" && mercadoPagoAccessToken
+    ? createMercadoPagoClient({
+        accessToken: mercadoPagoAccessToken,
+        apiBaseUrl: env.MERCADO_PAGO_API_BASE_URL,
+        timeoutMs: env.MERCADO_PAGO_TIMEOUT_MS
+      })
+    : null;
+
+function toMoneyDecimal(value: number) {
+  return new Prisma.Decimal(value.toFixed(6));
+}
+
+function toPrismaJsonValue(
+  value: unknown
+): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput {
+  if (value === null || value === undefined) {
+    return Prisma.JsonNull;
+  }
+
+  try {
+    return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+  } catch {
+    return Prisma.JsonNull;
+  }
+}
 
 function buildDatabaseUrl(config: {
   DATABASE_URL?: string;
@@ -99,8 +166,12 @@ const redisPassword =
   env.REDIS_PASSWORD && env.REDIS_PASSWORD.trim().length > 0
     ? env.REDIS_PASSWORD
     : undefined;
-const uploadsRootDir = resolve(env.UPLOADS_DIR);
-const outputsRootDir = resolve(env.OUTPUTS_DIR);
+const uploadsRootDir = isAbsolute(env.UPLOADS_DIR)
+  ? env.UPLOADS_DIR
+  : resolve(monorepoRootDir, env.UPLOADS_DIR);
+const outputsRootDir = isAbsolute(env.OUTPUTS_DIR)
+  ? env.OUTPUTS_DIR
+  : resolve(monorepoRootDir, env.OUTPUTS_DIR);
 const uploadSigningSecret =
   env.UPLOAD_SIGNING_SECRET && env.UPLOAD_SIGNING_SECRET.length > 0
     ? env.UPLOAD_SIGNING_SECRET
@@ -167,8 +238,44 @@ const updateMeBodySchema = z
 
 const walletLedgerQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
   type: z.enum(LEDGER_TYPES).optional()
 });
+
+const paymentListQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  offset: z.coerce.number().int().min(0).default(0),
+  status: z.enum(PAYMENT_STATUSES).optional()
+});
+
+const createPixPaymentBodySchema = z.object({
+  amount: z.coerce
+    .number()
+    .refine(
+      (value) => value >= env.PIX_MIN_AMOUNT && value <= env.PIX_MAX_AMOUNT,
+      `Amount must be between ${env.PIX_MIN_AMOUNT} and ${env.PIX_MAX_AMOUNT}.`
+    )
+});
+
+const paymentWebhookDirectBodySchema = z.object({
+  providerPaymentId: z.string().min(4).max(200),
+  status: z.enum(PAYMENT_STATUSES),
+  idempotencyKey: z.string().min(6).max(200).optional(),
+  rawPayload: z.unknown().optional()
+});
+
+const paymentWebhookMercadoPagoEventSchema = z
+  .object({
+    id: z.union([z.string(), z.number()]).optional(),
+    type: z.string().optional(),
+    action: z.string().optional(),
+    data: z
+      .object({
+        id: z.union([z.string(), z.number()]).optional()
+      })
+      .optional()
+  })
+  .passthrough();
 
 const uploadPresignBodySchema = z.object({
   fileName: z.string().min(3).max(255),
@@ -183,10 +290,15 @@ const createTranscriptionBodySchema = z.object({
 
 const transcriptionListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
+  offset: z.coerce.number().int().min(0).default(0),
   status: z.enum(JOB_STATUSES).optional()
 });
 
 const transcriptionParamsSchema = z.object({
+  id: z.string().min(1)
+});
+
+const paymentParamsSchema = z.object({
   id: z.string().min(1)
 });
 
@@ -249,6 +361,15 @@ type PublicTranscriptionJob = {
   outputs: PublicTranscriptionOutput[];
   chunks?: PublicTranscriptionChunk[];
 };
+type PublicPayment = {
+  id: string;
+  provider: "mercado_pago";
+  providerPaymentId: string;
+  amount: string;
+  status: "pending" | "approved" | "rejected" | "expired";
+  createdAt: string;
+  updatedAt: string;
+};
 
 type UserAuthShape = {
   id: string;
@@ -262,9 +383,14 @@ type UserAuthShape = {
 const app = Fastify({
   bodyLimit: env.MAX_UPLOAD_BYTES,
   maxParamLength: 4096,
+  requestTimeout: env.REQUEST_TIMEOUT_MS,
   logger: {
     level: env.NODE_ENV === "production" ? "info" : "debug"
   }
+});
+
+app.addHook("onRequest", async (request, reply) => {
+  reply.header("x-request-id", request.id);
 });
 
 for (const contentType of new Set([
@@ -480,6 +606,330 @@ function serializeUser(user: {
   };
 }
 
+function serializePayment(payment: {
+  id: string;
+  provider: "mercado_pago";
+  providerPaymentId: string;
+  amount: Prisma.Decimal;
+  status: "pending" | "approved" | "rejected" | "expired";
+  createdAt: Date;
+  updatedAt: Date;
+}): PublicPayment {
+  return {
+    id: payment.id,
+    provider: payment.provider,
+    providerPaymentId: payment.providerPaymentId,
+    amount: payment.amount.toString(),
+    status: payment.status,
+    createdAt: payment.createdAt.toISOString(),
+    updatedAt: payment.updatedAt.toISOString()
+  };
+}
+
+function getHeaderValue(headers: FastifyRequest["headers"], key: string) {
+  const value = headers[key];
+  if (!value) {
+    return null;
+  }
+  if (Array.isArray(value)) {
+    return value[0] ?? null;
+  }
+  return value;
+}
+
+function verifyWebhookSecret(request: FastifyRequest) {
+  if (!paymentWebhookSecret) {
+    return true;
+  }
+
+  const provided = getHeaderValue(request.headers, "x-payment-webhook-secret");
+  if (!provided) {
+    return false;
+  }
+  return safeCompare(provided, paymentWebhookSecret);
+}
+
+function parseMercadoPagoSignatureHeader(rawSignature: string) {
+  const parts = rawSignature
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+
+  const parsed: Record<string, string> = {};
+  for (const part of parts) {
+    const [key, ...rest] = part.split("=");
+    if (!key || rest.length === 0) {
+      continue;
+    }
+    parsed[key.trim().toLowerCase()] = rest.join("=").trim();
+  }
+
+  return {
+    ts: parsed.ts ?? null,
+    v1: parsed.v1 ?? null
+  };
+}
+
+function normalizeManifestId(providerPaymentId: string) {
+  return providerPaymentId.trim().toLowerCase();
+}
+
+function buildMercadoPagoWebhookManifest(params: {
+  providerPaymentId: string;
+  requestId: string;
+  timestampSeconds: string;
+}) {
+  return `id:${normalizeManifestId(params.providerPaymentId)};request-id:${params.requestId};ts:${params.timestampSeconds};`;
+}
+
+function verifyMercadoPagoWebhookSignature(params: {
+  request: FastifyRequest;
+  providerPaymentId: string;
+}) {
+  if (!paymentWebhookSignatureSecret) {
+    return {
+      ok: true
+    } as const;
+  }
+
+  const signatureRaw = getHeaderValue(params.request.headers, "x-signature");
+  const requestId = getHeaderValue(params.request.headers, "x-request-id");
+  if (!signatureRaw || !requestId) {
+    return {
+      ok: false,
+      message: "Missing Mercado Pago signature headers."
+    } as const;
+  }
+
+  const signature = parseMercadoPagoSignatureHeader(signatureRaw);
+  if (!signature.ts || !signature.v1) {
+    return {
+      ok: false,
+      message: "Invalid Mercado Pago signature format."
+    } as const;
+  }
+
+  const signatureTimestamp = Number.parseInt(signature.ts, 10);
+  if (!Number.isFinite(signatureTimestamp)) {
+    return {
+      ok: false,
+      message: "Invalid Mercado Pago signature timestamp."
+    } as const;
+  }
+
+  if (webhookSignatureToleranceMs > 0) {
+    const deltaMs = Math.abs(Date.now() - signatureTimestamp * 1000);
+    if (deltaMs > webhookSignatureToleranceMs) {
+      return {
+        ok: false,
+        message: "Mercado Pago signature expired."
+      } as const;
+    }
+  }
+
+  const manifest = buildMercadoPagoWebhookManifest({
+    providerPaymentId: params.providerPaymentId,
+    requestId,
+    timestampSeconds: signature.ts
+  });
+  const expected = createHmac("sha256", paymentWebhookSignatureSecret)
+    .update(manifest)
+    .digest("hex");
+  const provided = signature.v1.toLowerCase();
+  if (!safeCompare(provided, expected.toLowerCase())) {
+    return {
+      ok: false,
+      message: "Mercado Pago signature mismatch."
+    } as const;
+  }
+
+  return {
+    ok: true
+  } as const;
+}
+
+function verifyPaymentWebhookAuth(params: {
+  request: FastifyRequest;
+  providerPaymentId: string;
+}) {
+  const signatureValidation = verifyMercadoPagoWebhookSignature(params);
+  if (!signatureValidation.ok) {
+    return signatureValidation;
+  }
+
+  if (!paymentWebhookSignatureSecret && !verifyWebhookSecret(params.request)) {
+    return {
+      ok: false,
+      message: "Invalid webhook secret."
+    } as const;
+  }
+
+  return {
+    ok: true
+  } as const;
+}
+
+function buildTranscriptionQueueOptions(jobId: string) {
+  return {
+    jobId,
+    attempts: env.TRANSCRIPTION_MAX_ATTEMPTS,
+    backoff: {
+      type: "exponential" as const,
+      delay: env.TRANSCRIPTION_RETRY_DELAY_MS
+    },
+    removeOnComplete: 100,
+    removeOnFail: 200
+  };
+}
+
+function getRequestContext(
+  request: FastifyRequest,
+  extra: Record<string, unknown> = {}
+) {
+  const maybeUser = request as FastifyRequest & { user?: { sub?: string } };
+  const userId = maybeUser.user?.sub ?? null;
+  return {
+    request_id: request.id,
+    user_id: userId,
+    ...extra
+  };
+}
+
+function mapMercadoPagoStatusToPaymentStatus(status: string) {
+  const normalized = status.trim().toLowerCase();
+  switch (normalized) {
+    case "approved":
+      return "approved" as const;
+    case "rejected":
+    case "cancelled":
+    case "cancelled_by_payer":
+    case "charged_back":
+      return "rejected" as const;
+    case "expired":
+      return "expired" as const;
+    case "pending":
+    case "in_process":
+    case "in_mediation":
+    case "authorized":
+    default:
+      return "pending" as const;
+  }
+}
+
+function resolveWebhookProviderPaymentId(
+  request: FastifyRequest,
+  body: unknown
+): string | null {
+  const direct = paymentWebhookDirectBodySchema.safeParse(body);
+  if (direct.success) {
+    return direct.data.providerPaymentId.trim();
+  }
+
+  const event = paymentWebhookMercadoPagoEventSchema.safeParse(body);
+  if (event.success) {
+    const query = request.query as Record<string, unknown> | undefined;
+    const candidate =
+      event.data.data?.id ?? event.data.id ?? query?.["data.id"] ?? query?.id;
+    if (typeof candidate === "number" || typeof candidate === "string") {
+      return String(candidate);
+    }
+  }
+
+  return null;
+}
+
+async function resolveWebhookPaymentStatus(params: {
+  request: FastifyRequest;
+  body: unknown;
+  providerPaymentId: string;
+}) {
+  const direct = paymentWebhookDirectBodySchema.safeParse(params.body);
+  if (direct.success) {
+    return {
+      status: direct.data.status,
+      rawPayload: direct.data.rawPayload ?? params.body
+    };
+  }
+
+  if (env.PAYMENT_PROVIDER_MODE === "mercado_pago" && mercadoPagoClient) {
+    const providerStatus = await mercadoPagoClient.getPaymentStatus(
+      params.providerPaymentId
+    );
+    return {
+      status: mapMercadoPagoStatusToPaymentStatus(providerStatus.status),
+      rawPayload: providerStatus.raw
+    };
+  }
+
+  return null;
+}
+
+async function approvePaymentAndCreditWallet(params: {
+  paymentId: string;
+  rawPayload?: unknown;
+  idempotencyKey?: string;
+}) {
+  return prisma.$transaction(async (tx) => {
+    const payment = await tx.payment.findUnique({
+      where: { id: params.paymentId }
+    });
+    if (!payment) {
+      return null;
+    }
+
+    const updatedPayment = await tx.payment.update({
+      where: { id: payment.id },
+      data: {
+        status: "approved",
+        rawPayload: toPrismaJsonValue(params.rawPayload ?? payment.rawPayload)
+      }
+    });
+
+    const creditIdempotencyKey =
+      params.idempotencyKey && params.idempotencyKey.trim().length > 0
+        ? params.idempotencyKey.trim()
+        : `payment:${payment.id}:credit`;
+
+    const existingCredit = await tx.walletLedger.findUnique({
+      where: {
+        idempotencyKey: creditIdempotencyKey
+      }
+    });
+    if (existingCredit) {
+      return {
+        payment: updatedPayment,
+        credited: false
+      };
+    }
+
+    await tx.wallet.update({
+      where: {
+        userId: payment.userId
+      },
+      data: {
+        availableBalance: {
+          increment: payment.amount
+        }
+      }
+    });
+
+    await tx.walletLedger.create({
+      data: {
+        userId: payment.userId,
+        type: "credit",
+        amount: payment.amount,
+        paymentId: payment.id,
+        idempotencyKey: creditIdempotencyKey
+      }
+    });
+
+    return {
+      payment: updatedPayment,
+      credited: true
+    };
+  });
+}
+
 function issueTokens(user: { id: string; email: string }) {
   return {
     accessToken: app.jwt.sign(
@@ -536,14 +986,28 @@ app.setErrorHandler((error, _request, reply) => {
 });
 
 async function registerRoutes() {
+  const corsOrigin = env.CORS_ALLOWED_ORIGINS
+    ? env.CORS_ALLOWED_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean)
+    : env.NODE_ENV === "production"
+      ? false
+      : true;
+
+  await app.register(helmet, {
+    contentSecurityPolicy: env.NODE_ENV === "production" ? undefined : false
+  });
+
   await app.register(cors, {
-    origin: true,
+    origin: corsOrigin,
     credentials: true
   });
 
   await app.register(rateLimit, {
     max: 120,
-    timeWindow: "1 minute"
+    timeWindow: "1 minute",
+    keyGenerator: (request) => {
+      const userId = (request as any).user?.id;
+      return userId ?? request.ip;
+    }
   });
 
   await app.register(jwt, {
@@ -556,7 +1020,7 @@ async function registerRoutes() {
     now: new Date().toISOString()
   }));
 
-  app.post("/v1/auth/register", async (request, reply) => {
+  app.post("/v1/auth/register", { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (request, reply) => {
     const body = registerBodySchema.parse(request.body);
     const email = body.email.trim().toLowerCase();
 
@@ -587,9 +1051,21 @@ async function registerRoutes() {
 
         await tx.wallet.create({
           data: {
-            userId: createdUser.id
+            userId: createdUser.id,
+            availableBalance: signupWelcomeCredit
           }
         });
+
+        if (signupWelcomeCredit.gt(0)) {
+          await tx.walletLedger.create({
+            data: {
+              userId: createdUser.id,
+              type: "credit",
+              amount: signupWelcomeCredit,
+              idempotencyKey: `signup:${createdUser.id}:welcome-credit`
+            }
+          });
+        }
 
         return createdUser;
       });
@@ -605,11 +1081,12 @@ async function registerRoutes() {
     const tokens = issueTokens(user);
     return reply.code(201).send({
       user: serializeUser(user),
+      welcomeCredit: signupWelcomeCredit.toString(),
       ...tokens
     });
   });
 
-  app.post("/v1/auth/login", async (request, reply) => {
+  app.post("/v1/auth/login", { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (request, reply) => {
     const body = loginBodySchema.parse(request.body);
     const email = body.email.trim().toLowerCase();
 
@@ -794,13 +1271,19 @@ async function registerRoutes() {
         where.type = query.type;
       }
 
-      const entries = await prisma.walletLedger.findMany({
-        where,
-        orderBy: { createdAt: "desc" },
-        take: query.limit
-      });
+      const [entries, total] = await Promise.all([
+        prisma.walletLedger.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          take: query.limit,
+          skip: query.offset
+        }),
+        prisma.walletLedger.count({ where })
+      ]);
 
       return reply.send({
+        total,
+        hasMore: query.offset + query.limit < total,
         items: entries.map((entry) => ({
           id: entry.id,
           type: entry.type,
@@ -813,6 +1296,296 @@ async function registerRoutes() {
       });
     }
   );
+
+  app.get(
+    "/v1/payments",
+    {
+      preHandler: [authenticate]
+    },
+    async (request) => {
+      const query = paymentListQuerySchema.parse(request.query);
+      const where: Prisma.PaymentWhereInput = {
+        userId: request.user.sub
+      };
+      if (query.status) {
+        where.status = query.status;
+      }
+
+      const [payments, total] = await Promise.all([
+        prisma.payment.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          take: query.limit,
+          skip: query.offset
+        }),
+        prisma.payment.count({ where })
+      ]);
+
+      return {
+        total,
+        hasMore: query.offset + query.limit < total,
+        items: payments.map((payment) => serializePayment(payment))
+      };
+    }
+  );
+
+  app.post(
+    "/v1/payments/pix",
+    {
+      preHandler: [authenticate],
+      config: { rateLimit: { max: 10, timeWindow: "1 minute" } }
+    },
+    async (request, reply) => {
+      const body = createPixPaymentBodySchema.parse(request.body);
+      const amount = toMoneyDecimal(body.amount);
+      const idempotencyKey = `pix:create:${request.user.sub}:${Date.now()}:${randomUUID().slice(0, 8)}`;
+      const user = await prisma.user.findUnique({
+        where: { id: request.user.sub },
+        select: { email: true }
+      });
+      if (!user) {
+        return reply.code(404).send({
+          message: "User not found."
+        });
+      }
+
+      let providerPaymentId = `${env.PAYMENT_PROVIDER_MODE}_${Date.now()}_${randomUUID().slice(0, 8)}`;
+      let providerStatus: (typeof PAYMENT_STATUSES)[number] = "pending";
+      let expiresAt = new Date(Date.now() + env.PIX_EXPIRES_MINUTES * 60 * 1000);
+      let copyPasteCode = `pix:${providerPaymentId}:${amount.toString()}`;
+      let qrCodeBase64: string | null = null;
+      let ticketUrl: string | null = null;
+      let providerRawPayload: unknown = {
+        providerMode: env.PAYMENT_PROVIDER_MODE,
+        copyPasteCode,
+        expiresAt: expiresAt.toISOString()
+      };
+
+      if (env.PAYMENT_PROVIDER_MODE === "mercado_pago") {
+        if (!mercadoPagoClient) {
+          return reply.code(503).send({
+            message:
+              "Mercado Pago client is not configured. Set MERCADO_PAGO_ACCESS_TOKEN."
+          });
+        }
+
+        try {
+          const created = await mercadoPagoClient.createPixPayment({
+            amount: body.amount,
+            payerEmail: user.email,
+            description: `${env.PAYMENT_DESCRIPTION_PREFIX} - Recarga de créditos`,
+            externalReference: `user:${request.user.sub}`,
+            idempotencyKey,
+            notificationUrl: env.MERCADO_PAGO_WEBHOOK_URL
+          });
+
+          providerPaymentId = created.id;
+          providerStatus = mapMercadoPagoStatusToPaymentStatus(created.status);
+          expiresAt = created.expiresAt ? new Date(created.expiresAt) : expiresAt;
+          copyPasteCode = created.qrCode ?? copyPasteCode;
+          qrCodeBase64 = created.qrCodeBase64;
+          ticketUrl = created.ticketUrl;
+          providerRawPayload = created.raw;
+        } catch (error) {
+          request.log.error(error, "Could not create PIX payment in Mercado Pago.");
+          return reply.code(503).send({
+            message: "Could not create PIX payment with Mercado Pago."
+          });
+        }
+      }
+
+      const payment = await prisma.payment.create({
+        data: {
+          userId: request.user.sub,
+          provider: "mercado_pago",
+          providerPaymentId,
+          amount,
+          status: providerStatus,
+          rawPayload: toPrismaJsonValue({
+            providerMode: env.PAYMENT_PROVIDER_MODE,
+            copyPasteCode,
+            expiresAt: expiresAt.toISOString(),
+            providerPayload: providerRawPayload
+          })
+        }
+      });
+
+      const finalizedPayment =
+        payment.status === "approved"
+          ? (await approvePaymentAndCreditWallet({
+              paymentId: payment.id,
+              rawPayload: toPrismaJsonValue(payment.rawPayload),
+              idempotencyKey: `payment:${payment.id}:credit`
+            }))?.payment ?? payment
+          : payment;
+
+      return reply.code(201).send({
+        payment: serializePayment(finalizedPayment),
+        pix: {
+          providerMode: env.PAYMENT_PROVIDER_MODE,
+          copyPasteCode,
+          expiresAt: expiresAt.toISOString(),
+          qrCodeBase64,
+          ticketUrl
+        }
+      });
+    }
+  );
+
+  app.post(
+    "/v1/payments/:id/confirm",
+    {
+      preHandler: [authenticate]
+    },
+    async (request, reply) => {
+      if (env.PAYMENT_PROVIDER_MODE !== "mock") {
+        return reply.code(405).send({
+          message:
+            "Manual payment confirmation is only available in PAYMENT_PROVIDER_MODE=mock."
+        });
+      }
+
+      const params = paymentParamsSchema.parse(request.params);
+      const payment = await prisma.payment.findFirst({
+        where: {
+          id: params.id,
+          userId: request.user.sub
+        }
+      });
+      if (!payment) {
+        return reply.code(404).send({
+          message: "Payment not found."
+        });
+      }
+
+      if (payment.status === "approved") {
+        return reply.send({
+          payment: serializePayment(payment),
+          credited: false
+        });
+      }
+
+      const approved = await approvePaymentAndCreditWallet({
+        paymentId: payment.id,
+        rawPayload: {
+          event: "mock_manual_confirmation",
+          confirmedAt: new Date().toISOString()
+        },
+        idempotencyKey: `payment:${payment.id}:credit`
+      });
+      if (!approved) {
+        return reply.code(404).send({
+          message: "Payment not found."
+        });
+      }
+
+      return reply.send({
+        payment: serializePayment(approved.payment),
+        credited: approved.credited
+      });
+    }
+  );
+
+  app.post("/v1/webhooks/mercadopago", async (request, reply) => {
+    const providerPaymentId = resolveWebhookProviderPaymentId(request, request.body);
+    if (!providerPaymentId) {
+      return reply.code(400).send({
+        message: "Webhook payload missing payment identifier."
+      });
+    }
+
+    const authValidation = verifyPaymentWebhookAuth({
+      request,
+      providerPaymentId
+    });
+    if (!authValidation.ok) {
+      request.log.warn(
+        getRequestContext(request, {
+          provider_payment_id: providerPaymentId,
+          reason: authValidation.message
+        }),
+        "Mercado Pago webhook authentication failed."
+      );
+      return reply.code(401).send({
+        message: authValidation.message
+      });
+    }
+
+    const resolved = await resolveWebhookPaymentStatus({
+      request,
+      body: request.body,
+      providerPaymentId
+    });
+    if (!resolved) {
+      return reply.code(400).send({
+        message: "Webhook payload missing payment status."
+      });
+    }
+
+    const payment = await prisma.payment.findUnique({
+      where: {
+        providerPaymentId
+      }
+    });
+    if (!payment) {
+      return reply.code(404).send({
+        message: "Payment not found."
+      });
+    }
+
+    if (resolved.status === "approved") {
+      const approved = await approvePaymentAndCreditWallet({
+        paymentId: payment.id,
+        rawPayload: toPrismaJsonValue(resolved.rawPayload),
+        idempotencyKey: `payment:${payment.id}:credit`
+      });
+      if (!approved) {
+        return reply.code(404).send({
+          message: "Payment not found."
+        });
+      }
+
+      request.log.info(
+        getRequestContext(request, {
+          provider_payment_id: providerPaymentId,
+          payment_id: approved.payment.id,
+          payment_status: approved.payment.status,
+          credited: approved.credited
+        }),
+        "Mercado Pago webhook approved payment processed."
+      );
+
+      return reply.send({
+        ok: true,
+        payment: serializePayment(approved.payment),
+        credited: approved.credited
+      });
+    }
+
+    const updated = await prisma.payment.update({
+      where: { id: payment.id },
+      data: {
+        status: resolved.status,
+        rawPayload: toPrismaJsonValue(resolved.rawPayload)
+      }
+    });
+
+    request.log.info(
+      getRequestContext(request, {
+        provider_payment_id: providerPaymentId,
+        payment_id: updated.id,
+        payment_status: updated.status,
+        credited: false
+      }),
+      "Mercado Pago webhook non-approved payment processed."
+    );
+
+    return reply.send({
+      ok: true,
+      payment: serializePayment(updated),
+      credited: false
+    });
+  });
 
   app.post(
     "/v1/uploads/presign",
@@ -961,7 +1734,8 @@ async function registerRoutes() {
   app.post(
     "/v1/transcriptions",
     {
-      preHandler: [authenticate]
+      preHandler: [authenticate],
+      config: { rateLimit: { max: 20, timeWindow: "1 minute" } }
     },
     async (request, reply) => {
       const body = createTranscriptionBodySchema.parse(request.body);
@@ -970,6 +1744,21 @@ async function registerRoutes() {
       if (!sourceObjectKey.startsWith(userPrefix)) {
         return reply.code(403).send({
           message: "Source object does not belong to the authenticated user."
+        });
+      }
+
+      const wallet = await prisma.wallet.findUnique({
+        where: { userId: request.user.sub }
+      });
+      if (!wallet) {
+        return reply.code(404).send({
+          message: "Wallet not found."
+        });
+      }
+      if (wallet.availableBalance.lte(0)) {
+        return reply.code(402).send({
+          message:
+            "Insufficient credits. Add more balance to create new transcription jobs."
         });
       }
 
@@ -1018,16 +1807,7 @@ async function registerRoutes() {
             sourceObjectKey: job.sourceObjectKey,
             language: job.language
           },
-          {
-            jobId: job.id,
-            attempts: 3,
-            backoff: {
-              type: "exponential",
-              delay: 2000
-            },
-            removeOnComplete: 100,
-            removeOnFail: 200
-          }
+          buildTranscriptionQueueOptions(job.id)
         );
       } catch (error) {
         app.log.error(error);
@@ -1060,6 +1840,16 @@ async function registerRoutes() {
         }
       });
 
+      request.log.info(
+        getRequestContext(request, {
+          job_id: queuedJob.id,
+          source_object_key: queuedJob.sourceObjectKey,
+          queue: env.TRANSCRIPTION_QUEUE,
+          attempts: env.TRANSCRIPTION_MAX_ATTEMPTS
+        }),
+        "Transcription job queued."
+      );
+
       return reply.code(201).send({
         job: serializeTranscriptionJob(queuedJob)
       });
@@ -1080,16 +1870,20 @@ async function registerRoutes() {
         where.status = query.status;
       }
 
-      const jobs = await prisma.transcriptionJob.findMany({
-        where,
-        orderBy: { createdAt: "desc" },
-        take: query.limit,
-        include: {
-          outputs: true
-        }
-      });
+      const [jobs, total] = await Promise.all([
+        prisma.transcriptionJob.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          take: query.limit,
+          skip: query.offset,
+          include: { outputs: true }
+        }),
+        prisma.transcriptionJob.count({ where })
+      ]);
 
       return {
+        total,
+        hasMore: query.offset + query.limit < total,
         items: jobs.map((job) => serializeTranscriptionJob(job))
       };
     }
@@ -1121,6 +1915,125 @@ async function registerRoutes() {
 
       return reply.send({
         job: serializeTranscriptionJobDetail(job)
+      });
+    }
+  );
+
+  app.post(
+    "/v1/transcriptions/:id/reprocess",
+    {
+      preHandler: [authenticate]
+    },
+    async (request, reply) => {
+      const params = transcriptionParamsSchema.parse(request.params);
+      const job = await prisma.transcriptionJob.findFirst({
+        where: {
+          id: params.id,
+          userId: request.user.sub
+        },
+        include: {
+          outputs: true
+        }
+      });
+      if (!job) {
+        return reply.code(404).send({
+          message: "Transcription job not found."
+        });
+      }
+
+      if (job.status !== "failed") {
+        return reply.code(409).send({
+          message: "Only failed jobs can be reprocessed.",
+          job: serializeTranscriptionJob(job)
+        });
+      }
+
+      if (!job.sourceObjectKey) {
+        return reply.code(410).send({
+          message: "Source file was deleted during retention cleanup and can no longer be reprocessed."
+        });
+      }
+
+      if (objectStorage) {
+        try {
+          await objectStorage.headObject(job.sourceObjectKey);
+        } catch (error) {
+          if (getErrorStatusCode(error) === 404) {
+            return reply.code(404).send({
+              message: "Uploaded source file not found for reprocessing."
+            });
+          }
+          request.log.error(
+            error,
+            "Could not validate source object in OCI bucket before reprocess."
+          );
+          return reply.code(503).send({
+            message: "Could not validate uploaded source file for reprocessing."
+          });
+        }
+      } else {
+        const sourcePath = resolveStoragePath(uploadsRootDir, job.sourceObjectKey);
+        if (!sourcePath || !existsSync(sourcePath)) {
+          return reply.code(404).send({
+            message: "Uploaded source file not found for reprocessing."
+          });
+        }
+      }
+
+      const existingQueueJob = await transcriptionQueue.getJob(job.id);
+      if (existingQueueJob) {
+        const queueState = await existingQueueJob.getState();
+        if (
+          queueState === "active" ||
+          queueState === "waiting" ||
+          queueState === "delayed" ||
+          queueState === "prioritized"
+        ) {
+          return reply.code(409).send({
+            message: "Job is already queued for processing."
+          });
+        }
+        try {
+          await existingQueueJob.remove();
+        } catch {
+          // ignore stale queue entry cleanup failures
+        }
+      }
+
+      await transcriptionQueue.add(
+        TRANSCRIPTION_JOB_NAME,
+        {
+          jobId: job.id,
+          userId: job.userId,
+          sourceObjectKey: job.sourceObjectKey,
+          language: job.language
+        },
+        buildTranscriptionQueueOptions(job.id)
+      );
+
+      const queuedJob = await prisma.transcriptionJob.update({
+        where: { id: job.id },
+        data: {
+          status: "queued",
+          errorCode: null,
+          errorMessage: null,
+          completedAt: null
+        },
+        include: {
+          outputs: true
+        }
+      });
+
+      request.log.info(
+        getRequestContext(request, {
+          job_id: queuedJob.id,
+          queue: env.TRANSCRIPTION_QUEUE
+        }),
+        "Failed transcription job queued for reprocessing."
+      );
+
+      return reply.send({
+        job: serializeTranscriptionJob(queuedJob)
       });
     }
   );

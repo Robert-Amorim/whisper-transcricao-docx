@@ -3,6 +3,9 @@ import type {
   AuthResponse,
   JobStatus,
   OutputFormat,
+  PaymentStatus,
+  PaymentSummary,
+  PixPaymentResponse,
   PublicUser,
   SessionTokens,
   TranscriptionJob,
@@ -226,30 +229,49 @@ export async function getWallet() {
   });
 }
 
-export async function listWalletLedger(limit = 50, type?: WalletLedgerEntry["type"]) {
-  const query = new URLSearchParams({
-    limit: String(limit)
-  });
-  if (type) {
-    query.set("type", type);
-  }
+export async function listWalletLedger(params?: { limit?: number; offset?: number; type?: WalletLedgerEntry["type"] }) {
+  const query = new URLSearchParams({ limit: String(params?.limit ?? 50) });
+  if (params?.offset) query.set("offset", String(params.offset));
+  if (params?.type) query.set("type", params.type);
+  return requestJson<{ items: WalletLedgerEntry[]; total: number; hasMore: boolean }>(
+    `/v1/wallet/ledger?${query.toString()}`, { auth: true }
+  );
+}
 
-  return requestJson<{ items: WalletLedgerEntry[] }>(`/v1/wallet/ledger?${query.toString()}`, {
+export async function listPayments(params?: { limit?: number; offset?: number; status?: PaymentStatus }) {
+  const query = new URLSearchParams({ limit: String(params?.limit ?? 20) });
+  if (params?.offset) query.set("offset", String(params.offset));
+  if (params?.status) query.set("status", params.status);
+  return requestJson<{ items: PaymentSummary[]; total: number; hasMore: boolean }>(
+    `/v1/payments?${query.toString()}`, { auth: true }
+  );
+}
+
+export async function createPixPayment(payload: { amount: number }) {
+  return requestJson<PixPaymentResponse>("/v1/payments/pix", {
+    method: "POST",
+    body: payload,
     auth: true
   });
 }
 
-export async function listTranscriptions(params?: { limit?: number; status?: JobStatus }) {
-  const query = new URLSearchParams({
-    limit: String(params?.limit ?? 20)
-  });
-  if (params?.status) {
-    query.set("status", params.status);
-  }
+export async function confirmPixPayment(paymentId: string) {
+  return requestJson<{ payment: PaymentSummary; credited: boolean }>(
+    `/v1/payments/${encodeURIComponent(paymentId)}/confirm`,
+    {
+      method: "POST",
+      auth: true
+    }
+  );
+}
 
-  return requestJson<{ items: TranscriptionJob[] }>(`/v1/transcriptions?${query.toString()}`, {
-    auth: true
-  });
+export async function listTranscriptions(params?: { limit?: number; offset?: number; status?: JobStatus }) {
+  const query = new URLSearchParams({ limit: String(params?.limit ?? 20) });
+  if (params?.offset) query.set("offset", String(params.offset));
+  if (params?.status) query.set("status", params.status);
+  return requestJson<{ items: TranscriptionJob[]; total: number; hasMore: boolean }>(
+    `/v1/transcriptions?${query.toString()}`, { auth: true }
+  );
 }
 
 export async function getTranscription(id: string) {
@@ -287,6 +309,16 @@ export async function createTranscription(payload: { sourceObjectKey: string; la
     body: payload,
     auth: true
   });
+}
+
+export async function reprocessTranscription(jobId: string) {
+  return requestJson<{ job: TranscriptionJob }>(
+    `/v1/transcriptions/${encodeURIComponent(jobId)}/reprocess`,
+    {
+      method: "POST",
+      auth: true
+    }
+  );
 }
 
 function getFilenameFromDisposition(headerValue: string | null, fallback: string) {
@@ -329,4 +361,19 @@ export async function downloadTranscriptionOutput(jobId: string, format: OutputF
     blob,
     fileName
   };
+}
+
+export async function getTranscriptionOutputText(jobId: string, format: OutputFormat) {
+  const response = await requestRaw(
+    `/v1/transcriptions/${encodeURIComponent(jobId)}/download?format=${format}`,
+    {
+      auth: true
+    }
+  );
+
+  if (!response.ok) {
+    throw await parseError(response);
+  }
+
+  return response.text();
 }

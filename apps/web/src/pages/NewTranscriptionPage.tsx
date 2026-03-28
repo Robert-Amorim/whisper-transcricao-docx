@@ -1,15 +1,30 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import Spinner from "../components/common/Spinner";
 import UploadStateGrid from "../components/transcriptions/UploadStateGrid";
 import {
   ApiError,
   createTranscription,
   createUploadPresign,
   getErrorMessage,
-  getMe,
-  uploadToPresignedUrl
+  getMe
 } from "../lib/api";
 import { clearSessionTokens, getSessionTokens } from "../lib/session";
+
+const MAX_FILE_BYTES = 500 * 1024 * 1024; // 500 MB
+
+const ACCEPTED_EXTENSIONS = [".mp3", ".m4a", ".wav", ".mp4", ".webm", ".ogg", ".mpeg"];
+
+const LANGUAGES = [
+  { code: "pt-BR", label: "Português (Brasil)" },
+  { code: "en-US", label: "English (US)" },
+  { code: "es-ES", label: "Español" },
+  { code: "fr-FR", label: "Français" },
+  { code: "de-DE", label: "Deutsch" },
+  { code: "it-IT", label: "Italiano" },
+  { code: "ja-JP", label: "日本語" },
+  { code: "zh-CN", label: "中文 (简体)" }
+];
 
 type UploadState = "idle" | "uploading" | "success" | "error";
 
@@ -20,9 +35,11 @@ export default function NewTranscriptionPage() {
   const [userName, setUserName] = useState("");
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState("");
   const [language, setLanguage] = useState("pt-BR");
   const [uploadState, setUploadState] = useState<UploadState>("idle");
   const [message, setMessage] = useState("");
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -31,7 +48,6 @@ export default function NewTranscriptionPage() {
         navigate("/login", { replace: true });
         return;
       }
-
       try {
         const me = await getMe();
         setUserName(me.name);
@@ -40,12 +56,34 @@ export default function NewTranscriptionPage() {
         navigate("/login", { replace: true });
         return;
       }
-
       setIsBootstrapping(false);
     }
-
     void bootstrap();
   }, [navigate]);
+
+  function validateFile(file: File): string {
+    const ext = "." + file.name.split(".").pop()?.toLowerCase();
+    if (!ACCEPTED_EXTENSIONS.includes(ext)) {
+      return `Formato não suportado: ${ext}. Use ${ACCEPTED_EXTENSIONS.join(", ")}.`;
+    }
+    if (file.size > MAX_FILE_BYTES) {
+      const mb = (file.size / 1024 / 1024).toFixed(1);
+      return `Arquivo muito grande: ${mb} MB. O limite é 500 MB.`;
+    }
+    return "";
+  }
+
+  function handleFileChange(file: File | null) {
+    setSelectedFile(file);
+    setUploadState("idle");
+    setMessage("");
+    setUploadProgress(0);
+    if (file) {
+      setFileError(validateFile(file));
+    } else {
+      setFileError("");
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -54,9 +92,15 @@ export default function NewTranscriptionPage() {
       setMessage("Selecione um arquivo antes de iniciar.");
       return;
     }
+    const err = validateFile(selectedFile);
+    if (err) {
+      setFileError(err);
+      return;
+    }
 
     setUploadState("uploading");
     setMessage("Solicitando URL de upload...");
+    setUploadProgress(5);
     setIsSubmitting(true);
 
     try {
@@ -66,21 +110,25 @@ export default function NewTranscriptionPage() {
         sizeBytes: selectedFile.size
       });
 
-      setMessage("Enviando arquivo para storage...");
-      await uploadToPresignedUrl(presign, selectedFile);
+      setMessage("Enviando arquivo...");
+      setUploadProgress(20);
 
-      setMessage("Criando job de transcricao...");
+      await uploadWithProgress(presign, selectedFile, (pct) => {
+        setUploadProgress(20 + Math.round(pct * 0.65));
+      });
+
+      setUploadProgress(90);
+      setMessage("Criando job de transcrição...");
       const created = await createTranscription({
         sourceObjectKey: presign.objectKey,
         language
       });
 
+      setUploadProgress(100);
       setUploadState("success");
-      setMessage(`Job criado com sucesso: ${created.job.id}`);
+      setMessage(`Job criado: ${created.job.id}`);
       setSelectedFile(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
+      if (fileInputRef.current) fileInputRef.current.value = "";
 
       navigate(`/transcricoes/${created.job.id}`);
     } catch (error) {
@@ -90,7 +138,8 @@ export default function NewTranscriptionPage() {
         return;
       }
       setUploadState("error");
-      setMessage(getErrorMessage(error, "Falha ao iniciar a transcricao."));
+      setUploadProgress(0);
+      setMessage(getErrorMessage(error, "Falha ao iniciar a transcrição."));
     } finally {
       setIsSubmitting(false);
     }
@@ -99,20 +148,22 @@ export default function NewTranscriptionPage() {
   if (isBootstrapping) {
     return (
       <main className="newtx-loading">
-        <h1>Carregando...</h1>
+        <Spinner size="lg" className="text-primary" />
       </main>
     );
   }
+
+  const fileSizeMb = selectedFile ? (selectedFile.size / 1024 / 1024).toFixed(1) : null;
 
   return (
     <main className="newtx-page">
       <header className="newtx-topbar">
         <div>
           <p>Voxora</p>
-          <h1>Nova Transcricao</h1>
+          <h1>Nova Transcrição</h1>
         </div>
         <div className="newtx-topbar-actions">
-          <span>{userName || "Usuario"}</span>
+          <span>{userName || "Usuário"}</span>
           <Link to="/dashboard">Voltar ao dashboard</Link>
         </div>
       </header>
@@ -121,7 +172,7 @@ export default function NewTranscriptionPage() {
         <section className="newtx-main">
           <form className="newtx-upload-card" onSubmit={handleSubmit}>
             <h2>Upload do arquivo</h2>
-            <p>Formatos aceitos: MP3, M4A, WAV, MP4, WEBM, OGG, MPEG (ate 500MB).</p>
+            <p>Formatos aceitos: MP3, M4A, WAV, MP4, WEBM, OGG, MPEG (até 500 MB).</p>
 
             <label className="newtx-file-picker">
               <span>Selecionar arquivo</span>
@@ -130,26 +181,55 @@ export default function NewTranscriptionPage() {
                 type="file"
                 accept=".mp3,.m4a,.wav,.mp4,.webm,.ogg,.mpeg,audio/*,video/*"
                 required
-                onChange={(event) => {
-                  setSelectedFile(event.target.files?.[0] ?? null);
-                  setUploadState("idle");
-                  setMessage("");
-                }}
+                onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)}
               />
             </label>
+
+            {selectedFile && (
+              <p className="text-sm text-slate-500">
+                {selectedFile.name} — {fileSizeMb} MB
+              </p>
+            )}
+
+            {fileError && (
+              <p className="text-sm text-red-500">{fileError}</p>
+            )}
 
             <label className="newtx-field">
               Idioma
-              <input
+              <select
                 value={language}
-                onChange={(event) => setLanguage(event.target.value)}
-                placeholder="pt-BR"
-                maxLength={16}
-              />
+                onChange={(e) => setLanguage(e.target.value)}
+                className="newtx-select"
+              >
+                {LANGUAGES.map((lang) => (
+                  <option key={lang.code} value={lang.code}>
+                    {lang.label}
+                  </option>
+                ))}
+              </select>
             </label>
 
-            <button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Processando..." : "Confirmar e iniciar transcricao"}
+            {uploadState === "uploading" && (
+              <div className="newtx-progress">
+                <div className="newtx-progress-bar">
+                  <div
+                    className="newtx-progress-fill"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+                <span className="newtx-progress-label">{uploadProgress}%</span>
+              </div>
+            )}
+
+            <button type="submit" disabled={isSubmitting || !!fileError}>
+              {isSubmitting ? (
+                <span className="flex items-center gap-2">
+                  <Spinner size="sm" /> {message || "Processando..."}
+                </span>
+              ) : (
+                "Confirmar e iniciar transcrição"
+              )}
             </button>
           </form>
 
@@ -164,27 +244,65 @@ export default function NewTranscriptionPage() {
           <section className="newtx-panel">
             <h3>Antes de enviar</h3>
             <ul>
-              <li>Reduza ruido de fundo quando possivel.</li>
-              <li>Garanta que o audio principal esteja nitido.</li>
-              <li>Confira extensao e tamanho do arquivo.</li>
-              <li>Use idioma correto para melhor precisao.</li>
+              <li>Reduza ruído de fundo quando possível.</li>
+              <li>Garanta que o áudio principal esteja nítido.</li>
+              <li>Confira extensão e tamanho do arquivo.</li>
+              <li>Use o idioma correto para melhor precisão.</li>
             </ul>
           </section>
 
           <section className="newtx-panel">
             <h3>Passo a passo</h3>
-            <code>Selecao do arquivo</code>
+            <code>Seleção do arquivo</code>
             <code>Envio seguro</code>
-            <code>Inicio da transcricao</code>
-            <p>Voce envia o arquivo, acompanha o andamento e recebe o resultado pronto.</p>
+            <code>Início da transcrição</code>
+            <p>Você envia o arquivo, acompanha o andamento e recebe o resultado pronto.</p>
           </section>
 
           <section className="newtx-panel">
-            <h3>Ultimo estado</h3>
-            <p>{message || "Nenhum upload recente nesta sessao."}</p>
+            <h3>Último estado</h3>
+            <p>{message || "Nenhum upload recente nesta sessão."}</p>
           </section>
         </aside>
       </section>
     </main>
   );
+}
+
+async function uploadWithProgress(
+  presign: Awaited<ReturnType<typeof createUploadPresign>>,
+  file: File,
+  onProgress: (pct: number) => void
+) {
+  return new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+
+    xhr.upload.addEventListener("progress", (e) => {
+      if (e.lengthComputable) {
+        onProgress(e.loaded / e.total);
+      }
+    });
+
+    xhr.addEventListener("load", () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve();
+      } else {
+        reject(new ApiError(`Falha no upload (status ${xhr.status}).`, xhr.status));
+      }
+    });
+
+    xhr.addEventListener("error", () => {
+      reject(new ApiError("Erro de rede durante o upload.", 0));
+    });
+
+    xhr.open(presign.method ?? "PUT", presign.uploadUrl);
+
+    if (presign.requiredHeaders) {
+      for (const [key, value] of Object.entries(presign.requiredHeaders)) {
+        xhr.setRequestHeader(key, value);
+      }
+    }
+
+    xhr.send(file);
+  });
 }

@@ -48,6 +48,16 @@ Apply a consistent workflow between design references and production UI. Keep vi
 - If implementation diverges from design artifact for usability/technical reasons, record the rationale in PR summary.
 - Keep names aligned between design artifact and code component when practical.
 
+## Output Contract
+
+Always conclude with:
+
+- `Design source`
+- `Components/paths updated`
+- `State coverage (loading/empty/error/success)`
+- `Responsive validation (mobile/desktop)`
+- `Intentional deviations`
+
 ## References
 
 Load [references/design-workflow.md](references/design-workflow.md) when you need practical checklists for pages, dashboards, and auth screens.

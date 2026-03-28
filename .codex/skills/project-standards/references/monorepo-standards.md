@@ -2,23 +2,29 @@
 
 ## Scope Checklist
 
-- Confirm target app/package before editing.
-- Confirm if contract changes affect another workspace.
+- Confirm target workspace before editing (`apps/web`, `apps/api`, `apps/worker`, `packages/shared`).
+- Confirm whether changed files affect runtime contract, not only types.
 - Prefer single-responsibility edits by feature.
+- Keep unrelated refactors out of the same change.
 
-## API + Worker Contract Checklist
+## Contract Impact Matrix
 
-- Keep queue payloads typed and version-aware.
-- Align API DTOs with `packages/shared` when reused by web/worker.
-- Validate auth and permission assumptions on API changes.
-- Keep provider-specific logic behind adapters in worker libs.
+- API response/request change:
+  - Update API producer.
+  - Update web consumer.
+  - Update worker consumer when applicable.
+- Shared type change (`packages/shared`):
+  - Confirm compile in all workspaces.
+  - Keep additive changes when possible.
+- Queue payload change:
+  - Keep backward compatibility or ship producer and consumer together.
 
-## Web Checklist
+## Local Prerequisites
 
-- Keep page-level composition in `src/pages`.
-- Keep reusable UI in `src/components`.
-- Keep API clients in `src/lib`.
-- Avoid duplicating types already available in `packages/shared`.
+- Node >= 22.
+- Dependencies installed with `npm install` at repository root.
+- Database reachable (local or tunnel) and schema up to date.
+- Redis reachable for worker execution (`REDIS_HOST`/`REDIS_PORT`).
 
 ## Safe Change Patterns
 
@@ -31,20 +37,45 @@
    - Keep queue contract stable.
    - Add timeout/retry guardrails.
 3. Refactor:
-   - Keep behavior parity.
-   - Move code first, then adjust internals.
+   - Preserve behavior first.
+   - Move code first, then optimize internals.
 
 ## Validation Commands
+
+Baseline:
 
 ```powershell
 npm run typecheck
 npm run build
 ```
 
-Targeted runs:
+Targeted:
 
 ```powershell
 npm run dev --workspace @voxora/web
 npm run dev --workspace @voxora/api
 npm run dev --workspace @voxora/worker
+```
+
+Release-ready check:
+
+```powershell
+npm run gate:pr
+```
+
+## Evidence Template (handoff)
+
+Use this structure in final delivery summary:
+
+```text
+Scope touched:
+- <workspace/files>
+Contract impact:
+- <none | details>
+Checks executed:
+- <command>: <result>
+Changed behavior:
+- <what changed>
+Residual risks:
+- <none | details>
 ```

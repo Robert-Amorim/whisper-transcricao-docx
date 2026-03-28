@@ -22,7 +22,10 @@
     "smoke:contracts": "node scripts/smoke/check-contracts.mjs",
     "smoke:e2e": "node scripts/smoke/run-e2e-api-worker.mjs",
     "smoke": "npm run smoke:artifacts && npm run smoke:contracts",
-    "gate:pr": "npm run lint && npm run typecheck && npm run build && npm run smoke"
+    "test:unit": "node scripts/tests/test-financial-calc.mjs && node scripts/tests/test-job-states.mjs && node scripts/tests/test-idempotency-keys.mjs && node scripts/tests/test-hold-capture-refund.mjs",
+    "test:e2e:insufficient": "node scripts/tests/test-insufficient-balance.mjs",
+    "test": "npm run test:unit",
+    "gate:pr": "npm run lint && npm run typecheck && npm run build && npm run test:unit && npm run smoke"
   },
   "devDependencies": {
     "npm-run-all": "^4.1.5"

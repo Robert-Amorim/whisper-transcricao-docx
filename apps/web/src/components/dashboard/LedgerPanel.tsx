@@ -59,6 +59,11 @@ function getLedgerIcon(type: WalletLedgerEntry["type"]) {
 
 type LedgerPanelProps = {
   ledger: WalletLedgerEntry[];
+  total?: number;
+  hasMore?: boolean;
+  currentPage?: number;
+  onPageChange?: (page: number) => void;
+  pageSize?: number;
 };
 
 type DashboardLedgerItem = {
@@ -75,78 +80,28 @@ type DashboardLedgerItem = {
   };
 };
 
-const MOCK_LEDGER_ITEMS: DashboardLedgerItem[] = [
-  {
-    id: "ledger-mock-1",
-    title: "Crédito Adicionado",
-    subtitle: "Via PIX • ID: 82394",
-    dateLabel: "18 Mai 2024, 14:22",
-    amountLabel: "+ R$ 500,00",
-    tone: "positive",
-    icon: {
-      wrapClassName: "bg-emerald-100 dark:bg-emerald-900/30",
-      iconClassName: "text-emerald-600",
-      symbol: "add"
-    }
-  },
-  {
-    id: "ledger-mock-2",
-    title: "Transcrição Completa",
-    subtitle: "Arquivo: interview_final.wav",
-    dateLabel: "18 Mai 2024, 09:35",
-    amountLabel: "- R$ 12,50",
-    tone: "negative",
-    icon: {
-      wrapClassName: "bg-red-100 dark:bg-red-900/30",
-      iconClassName: "text-red-600",
-      symbol: "remove"
-    }
-  },
-  {
-    id: "ledger-mock-3",
-    title: "Consumo API",
-    subtitle: "Chamada assíncrona batch v1",
-    dateLabel: "17 Mai 2024, 23:10",
-    amountLabel: "- R$ 4,20",
-    tone: "negative",
-    icon: {
-      wrapClassName: "bg-red-100 dark:bg-red-900/30",
-      iconClassName: "text-red-600",
-      symbol: "remove"
-    }
-  },
-  {
-    id: "ledger-mock-4",
-    title: "Estorno de Erro",
-    subtitle: "Falha no processamento (ep32)",
-    dateLabel: "17 Mai 2024, 11:05",
-    amountLabel: "+ R$ 8,00",
-    tone: "neutral",
-    icon: {
-      wrapClassName: "bg-primary/20",
-      iconClassName: "text-primary",
-      symbol: "history"
-    }
-  }
-];
-
-export default function LedgerPanel({ ledger }: LedgerPanelProps) {
-  const items: DashboardLedgerItem[] =
-    ledger.length > 0
-      ? ledger.slice(0, 6).map((entry) => {
-          const icon = getLedgerIcon(entry.type);
-          const signal = getLedgerAmountSignal(entry.type);
-          return {
-            id: entry.id,
-            title: getLedgerTypeLabel(entry.type),
-            subtitle: entry.jobId ? `Job: ${entry.jobId}` : "Movimentação da carteira",
-            dateLabel: formatDateTime(entry.createdAt),
-            amountLabel: `${signal} ${formatCurrency(entry.amount)}`,
-            tone: signal === "+" ? "positive" : "negative",
-            icon
-          };
-        })
-      : MOCK_LEDGER_ITEMS;
+export default function LedgerPanel({
+  ledger,
+  total = 0,
+  hasMore = false,
+  currentPage = 0,
+  onPageChange,
+  pageSize = 8
+}: LedgerPanelProps) {
+  const totalPages = total > 0 ? Math.ceil(total / pageSize) : 1;
+  const items: DashboardLedgerItem[] = ledger.map((entry) => {
+    const icon = getLedgerIcon(entry.type);
+    const signal = getLedgerAmountSignal(entry.type);
+    return {
+      id: entry.id,
+      title: getLedgerTypeLabel(entry.type),
+      subtitle: entry.jobId ? `Job: ${entry.jobId}` : "Movimentação da carteira",
+      dateLabel: formatDateTime(entry.createdAt),
+      amountLabel: `${signal} ${formatCurrency(entry.amount)}`,
+      tone: signal === "+" ? "positive" : "negative",
+      icon
+    };
+  });
 
   return (
     <aside className="space-y-4" id="atividade">
@@ -160,41 +115,74 @@ export default function LedgerPanel({ ledger }: LedgerPanelProps) {
       </div>
 
       <div className="space-y-6 rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
-        <div className="space-y-4">
-          {items.map((item) => (
-            <div key={item.id} className="flex items-start gap-3">
-              <div
-                className={`flex size-8 flex-shrink-0 items-center justify-center rounded-full ${item.icon.wrapClassName}`}
-              >
-                <span className={`material-symbols-outlined text-sm ${item.icon.iconClassName}`}>
-                  {item.icon.symbol}
-                </span>
-              </div>
-              <div className="min-w-0 flex-1 overflow-hidden">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="truncate text-sm font-semibold">{item.title}</p>
-                  <p
-                    className={`text-sm font-bold ${
-                      item.tone === "positive"
-                        ? "text-emerald-500"
-                        : item.tone === "neutral"
-                          ? "text-primary"
-                          : "text-slate-700 dark:text-slate-300"
-                    }`}
-                  >
-                    {item.amountLabel}
-                  </p>
+        {items.length === 0 ? (
+          <p className="rounded-lg border border-dashed border-slate-300 px-4 py-5 text-sm text-slate-500 dark:border-slate-700">
+            Ainda não há movimentações na carteira.
+          </p>
+        ) : (
+          <div className="space-y-4">
+            {items.map((item) => (
+              <div key={item.id} className="flex items-start gap-3">
+                <div
+                  className={`flex size-8 flex-shrink-0 items-center justify-center rounded-full ${item.icon.wrapClassName}`}
+                >
+                  <span className={`material-symbols-outlined text-sm ${item.icon.iconClassName}`}>
+                    {item.icon.symbol}
+                  </span>
                 </div>
-                <p className="text-xs text-slate-500">{item.subtitle}</p>
-                <p className="mt-1 text-[10px] text-slate-400">{item.dateLabel}</p>
+                <div className="min-w-0 flex-1 overflow-hidden">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="truncate text-sm font-semibold">{item.title}</p>
+                    <p
+                      className={`text-sm font-bold ${
+                        item.tone === "positive"
+                          ? "text-emerald-500"
+                          : item.tone === "neutral"
+                            ? "text-primary"
+                            : "text-slate-700 dark:text-slate-300"
+                      }`}
+                    >
+                      {item.amountLabel}
+                    </p>
+                  </div>
+                  <p className="text-xs text-slate-500">{item.subtitle}</p>
+                  <p className="mt-1 text-[10px] text-slate-400">{item.dateLabel}</p>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
 
-        <button className="min-h-0 w-full rounded-lg border border-dashed border-slate-300 py-3 text-xs font-semibold text-slate-500 transition-all hover:border-primary hover:text-primary dark:border-slate-700">
-          Ver extrato completo
-        </button>
+        {onPageChange && totalPages > 1 ? (
+          <div className="flex items-center justify-between pt-2">
+            <span className="text-xs text-slate-500">
+              Página {currentPage + 1} de {totalPages}
+              {total > 0 ? ` · ${total} movimentações` : ""}
+            </span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={currentPage === 0}
+                onClick={() => onPageChange(currentPage - 1)}
+                className="min-h-0 rounded-lg border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 disabled:opacity-40 hover:text-primary dark:border-slate-700 dark:text-slate-400"
+              >
+                Anterior
+              </button>
+              <button
+                type="button"
+                disabled={!hasMore}
+                onClick={() => onPageChange(currentPage + 1)}
+                className="min-h-0 rounded-lg border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 disabled:opacity-40 hover:text-primary dark:border-slate-700 dark:text-slate-400"
+              >
+                Próxima
+              </button>
+            </div>
+          </div>
+        ) : (
+          total > pageSize ? (
+            <p className="text-center text-xs text-slate-500">{total} movimentações no total</p>
+          ) : null
+        )}
       </div>
     </aside>
   );

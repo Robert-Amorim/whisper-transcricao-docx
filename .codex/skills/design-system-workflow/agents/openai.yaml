@@ -1,4 +1,4 @@
 interface:
   display_name: "Design Workflow"
-  short_description: "Padrao de design system e handoff para web"
-  default_prompt: "Aplicar fluxo de design system para componentes e telas no apps/web."
+  short_description: "Design system, handoff e responsividade para apps/web"
+  default_prompt: "Aplicar o fluxo de design system da Voxora: mapear intencao visual para componentes reutilizaveis, preservar tokens e hierarquia, cobrir estados (loading/empty/error/success) e validar mobile/desktop."

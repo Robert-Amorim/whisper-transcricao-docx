@@ -1,4 +1,4 @@
 interface:
   display_name: "Project Standards"
-  short_description: "Padrao de arquitetura e desenvolvimento do monorepo"
-  default_prompt: "Aplicar padroes do monorepo para implementar mudancas com consistencia."
+  short_description: "Arquitetura, contratos e validacao do monorepo Voxora"
+  default_prompt: "Aplicar os padroes de arquitetura do monorepo Voxora: delimitar escopo por workspace, avaliar impacto de contratos, implementar a menor mudanca segura, validar com typecheck/build e encerrar com riscos residuais."

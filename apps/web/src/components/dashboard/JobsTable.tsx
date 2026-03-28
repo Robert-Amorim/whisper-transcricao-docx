@@ -76,6 +76,15 @@ type JobsTableProps = {
   loadState: "loading" | "ready" | "error";
   loadError: string;
   jobs: TranscriptionJob[];
+  onRetryFailedJob: (jobId: string) => void;
+  retryingJobIds: string[];
+  feedbackMessage: string;
+  feedbackTone: "neutral" | "success" | "error";
+  total?: number;
+  hasMore?: boolean;
+  currentPage?: number;
+  onPageChange?: (page: number) => void;
+  pageSize?: number;
 };
 
 type DashboardJobRow = {
@@ -87,49 +96,6 @@ type DashboardJobRow = {
   actionIcon: string;
   detailsHref?: string;
 };
-
-const MOCK_DASHBOARD_ROWS: DashboardJobRow[] = [
-  {
-    id: "mock-1",
-    sourceObjectKey: "meeting_record_01.mp3",
-    language: "PT-BR",
-    createdLabel: "10:45",
-    status: "processing",
-    actionIcon: "more_vert"
-  },
-  {
-    id: "mock-2",
-    sourceObjectKey: "interview_final.wav",
-    language: "EN-US",
-    createdLabel: "09:30",
-    status: "completed",
-    actionIcon: "download"
-  },
-  {
-    id: "mock-3",
-    sourceObjectKey: "podcast_ep32.mp4",
-    language: "PT-BR",
-    createdLabel: "08:15",
-    status: "failed",
-    actionIcon: "refresh"
-  },
-  {
-    id: "mock-4",
-    sourceObjectKey: "aula_metodologia.m4a",
-    language: "ES-ES",
-    createdLabel: "Ontem",
-    status: "queued",
-    actionIcon: "cancel"
-  },
-  {
-    id: "mock-5",
-    sourceObjectKey: "buffer_temp_092.tmp",
-    language: "--",
-    createdLabel: "Agora",
-    status: "uploaded",
-    actionIcon: "delete"
-  }
-];
 
 function getActionIconByStatus(status: JobStatus) {
   switch (status) {
@@ -148,25 +114,40 @@ function getActionIconByStatus(status: JobStatus) {
   }
 }
 
-export default function JobsTable({ loadState, loadError, jobs }: JobsTableProps) {
-  const tableRows: DashboardJobRow[] =
-    jobs.length > 0
-      ? jobs.map((job) => ({
-          id: job.id,
-          sourceObjectKey: getFileNameFromObjectKey(job.sourceObjectKey),
-          language: job.language,
-          createdLabel: formatDateTime(job.createdAt),
-          status: job.status,
-          actionIcon: getActionIconByStatus(job.status),
-          detailsHref:
-            job.status === "completed" ||
-            job.status === "processing" ||
-            job.status === "queued" ||
-            job.status === "validating"
-              ? `/transcricoes/${job.id}`
-              : undefined
-        }))
-      : MOCK_DASHBOARD_ROWS;
+function getFeedbackClassName(tone: JobsTableProps["feedbackTone"]) {
+  if (tone === "success") {
+    return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+  }
+  if (tone === "error") {
+    return "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300";
+  }
+  return "border-slate-300 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800/40 dark:text-slate-300";
+}
+
+export default function JobsTable({
+  loadState,
+  loadError,
+  jobs,
+  onRetryFailedJob,
+  retryingJobIds,
+  feedbackMessage,
+  feedbackTone,
+  total = 0,
+  hasMore = false,
+  currentPage = 0,
+  onPageChange,
+  pageSize = 20
+}: JobsTableProps) {
+  const totalPages = total > 0 ? Math.ceil(total / pageSize) : 1;
+  const tableRows: DashboardJobRow[] = jobs.map((job) => ({
+    id: job.id,
+    sourceObjectKey: getFileNameFromObjectKey(job.sourceObjectKey),
+    language: job.language,
+    createdLabel: formatDateTime(job.createdAt),
+    status: job.status,
+    actionIcon: getActionIconByStatus(job.status),
+    detailsHref: `/transcricoes/${job.id}`
+  }));
 
   return (
     <section className="col-span-8 space-y-4" id="jobs">
@@ -177,12 +158,17 @@ export default function JobsTable({ loadState, loadError, jobs }: JobsTableProps
             GET /v1/transcriptions
           </span>
         </div>
-        <button type="button" className="min-h-0 text-sm font-medium text-primary hover:underline">
-          Ver todos
-        </button>
+        {total > 0 && (
+          <span className="text-xs text-slate-500">{total} job{total !== 1 ? "s" : ""}</span>
+        )}
       </div>
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+        {feedbackMessage ? (
+          <p className={`m-4 rounded-lg border px-3 py-2 text-xs ${getFeedbackClassName(feedbackTone)}`}>
+            {feedbackMessage}
+          </p>
+        ) : null}
         <table className="w-full border-collapse text-left">
           <thead>
             <tr className="bg-slate-50 dark:bg-slate-800/50">
@@ -213,10 +199,19 @@ export default function JobsTable({ loadState, loadError, jobs }: JobsTableProps
               </tr>
             ) : null}
 
+            {loadState === "ready" && tableRows.length === 0 ? (
+              <tr>
+                <td className="px-6 py-6 text-sm text-slate-500" colSpan={6}>
+                  Nenhuma transcrição encontrada. Crie a primeira em "Nova transcrição".
+                </td>
+              </tr>
+            ) : null}
+
             {loadState === "ready"
               ? tableRows.map((row) => {
                   const status = getStatusPresentation(row.status);
                   const isWaiting = row.status === "uploaded";
+                  const isRetrying = retryingJobIds.includes(row.id);
                   return (
                     <tr key={row.id}>
                       <td className="px-6 py-4 text-sm font-medium">{row.sourceObjectKey}</td>
@@ -250,18 +245,32 @@ export default function JobsTable({ loadState, loadError, jobs }: JobsTableProps
                         )}
                       </td>
                       <td className="px-6 py-4">
-                        {row.detailsHref ? (
-                          <Link
-                            to={row.detailsHref}
-                            className="rounded p-1 text-slate-400 transition hover:bg-slate-100 hover:text-primary dark:hover:bg-slate-800"
-                          >
-                            <span className="material-symbols-outlined">{row.actionIcon}</span>
-                          </Link>
-                        ) : (
-                          <button type="button" className="rounded p-1 text-slate-400 transition hover:text-primary">
-                            <span className="material-symbols-outlined">{row.actionIcon}</span>
-                          </button>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {row.status === "failed" ? (
+                            <button
+                              type="button"
+                              onClick={() => onRetryFailedJob(row.id)}
+                              disabled={isRetrying}
+                              className="inline-flex min-h-0 items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary transition hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              <span className="material-symbols-outlined text-base leading-none">refresh</span>
+                              {isRetrying ? "Reenfileirando..." : "Tentar novamente"}
+                            </button>
+                          ) : null}
+
+                          {row.detailsHref ? (
+                            <Link
+                              to={row.detailsHref}
+                              className="rounded p-1 text-slate-400 transition hover:bg-slate-100 hover:text-primary dark:hover:bg-slate-800"
+                            >
+                              <span className="material-symbols-outlined">{row.actionIcon}</span>
+                            </Link>
+                          ) : (
+                            <button type="button" className="rounded p-1 text-slate-400 transition hover:text-primary">
+                              <span className="material-symbols-outlined">{row.actionIcon}</span>
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -270,6 +279,32 @@ export default function JobsTable({ loadState, loadError, jobs }: JobsTableProps
           </tbody>
         </table>
       </div>
+
+      {onPageChange && totalPages > 1 ? (
+        <div className="flex items-center justify-between px-1 pt-1">
+          <span className="text-xs text-slate-500">
+            Página {currentPage + 1} de {totalPages}
+          </span>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={currentPage === 0}
+              onClick={() => onPageChange(currentPage - 1)}
+              className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 disabled:opacity-40 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
+            >
+              Anterior
+            </button>
+            <button
+              type="button"
+              disabled={!hasMore}
+              onClick={() => onPageChange(currentPage + 1)}
+              className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 disabled:opacity-40 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
+            >
+              Próxima
+            </button>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

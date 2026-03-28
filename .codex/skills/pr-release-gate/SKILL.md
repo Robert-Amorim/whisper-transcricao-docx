@@ -56,6 +56,7 @@ Always conclude with:
 - `Gate`: pass | pass-with-risk | fail
 - `Blockers`: explicit list (or `none`)
 - `Risk notes`: explicit list (or `none`)
+- `Rollback notes`: explicit list (or `none`)
 - `Next actions`: ordered and actionable
 
 ## References

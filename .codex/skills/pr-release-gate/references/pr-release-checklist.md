@@ -30,11 +30,36 @@
 3. Deployment order
    - Deploy backend dependencies before frontend when contracts changed.
    - Avoid deploying incompatible consumer/producer combinations.
-4. Rollback readiness
+4. Runtime verification
+   - API health endpoint responds (`/health`).
+   - Worker connected to queue and processing.
+   - Web serving build artifact.
+5. Rollback readiness
    - Define rollback trigger (error threshold, failed healthcheck, etc.).
    - Define rollback action per service.
-5. Go/No-go
+6. Go/No-go
    - Go only when checks are green and rollback is prepared.
+
+## Command Matrix
+
+Local quality gate:
+
+```powershell
+npm run gate:pr
+```
+
+Server deploy validation (example):
+
+```bash
+pm2 list
+curl -sS http://127.0.0.1:62011/health
+```
+
+Database migration validation:
+
+```powershell
+npm exec --workspace @voxora/api prisma migrate status
+```
 
 ## Suggested Gate Report Template
 
