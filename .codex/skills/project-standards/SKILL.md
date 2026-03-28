@@ -67,6 +67,16 @@ Apply a single engineering standard for this repository. Keep code changes consi
 - Include compatibility notes when contracts changed.
 - List follow-up tasks explicitly if any were deferred.
 
+## Output Contract
+
+Always conclude with:
+
+- `Scope touched`
+- `Contract impact`
+- `Checks executed`
+- `Changed files`
+- `Residual risks`
+
 ## References
 
 Load [references/monorepo-standards.md](references/monorepo-standards.md) for checklists and ready-to-use implementation patterns.

@@ -61,6 +61,9 @@ export default function LoginPage() {
         accessToken: auth.accessToken,
         refreshToken: auth.refreshToken
       });
+      if (mode === "register" && auth.welcomeCredit) {
+        window.sessionStorage.setItem("voxora_welcome_credit", auth.welcomeCredit);
+      }
       navigate("/dashboard", { replace: true });
     } catch (submissionError) {
       setError(getErrorMessage(submissionError, "Nao foi possivel autenticar."));

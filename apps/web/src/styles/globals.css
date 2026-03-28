@@ -653,6 +653,60 @@ button:focus-visible {
   font-size: 0.86rem;
 }
 
+.result-preview-card {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #2b3a49;
+  border-radius: 12px;
+  background: #111b25;
+  padding: 12px;
+}
+
+.result-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.result-preview-head strong {
+  font-size: 0.86rem;
+  color: #bfd0e2;
+}
+
+.result-preview-head button {
+  min-height: 34px;
+  border-radius: 9px;
+  border: 1px solid #324355;
+  background: #182430;
+  color: #dce8f4;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0 10px;
+}
+
+.result-preview-head button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.result-preview-text {
+  margin: 0;
+  border: 1px solid #273849;
+  border-radius: 10px;
+  background: #0c141d;
+  color: #dce8f4;
+  padding: 10px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  max-height: 360px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .result-export-card {
   display: grid;
   gap: 10px;

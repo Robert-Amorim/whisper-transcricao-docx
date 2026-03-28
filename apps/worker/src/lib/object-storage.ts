@@ -166,6 +166,14 @@ export class OciObjectStorageService {
     });
   }
 
+  async deleteObject(objectKey: string) {
+    return this.client.deleteObject({
+      namespaceName: this.namespaceName,
+      bucketName: this.bucketName,
+      objectName: objectKey
+    });
+  }
+
   async getObjectBuffer(objectKey: string): Promise<Buffer> {
     const response = await this.client.getObject({
       namespaceName: this.namespaceName,

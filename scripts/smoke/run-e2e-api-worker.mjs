@@ -71,6 +71,53 @@ async function registerUser() {
   return payload.accessToken;
 }
 
+async function getWallet(accessToken) {
+  const { response, payload } = await requestJson("/v1/wallet", {
+    headers: {
+      authorization: `Bearer ${accessToken}`
+    }
+  });
+
+  ensureOk(response, payload, "get wallet");
+  return payload;
+}
+
+async function createPixPayment(accessToken, amount) {
+  const { response, payload } = await requestJson("/v1/payments/pix", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      amount
+    })
+  });
+
+  ensureOk(response, payload, "create pix payment");
+  assert.ok(payload?.payment?.id, "payment response missing id");
+  assert.ok(payload?.pix?.providerMode, "payment response missing providerMode");
+  console.log(`[smoke:e2e] PIX payment created (${payload.payment.id}).`);
+  return payload;
+}
+
+async function confirmPixPayment(accessToken, paymentId) {
+  const { response, payload } = await requestJson(
+    `/v1/payments/${encodeURIComponent(paymentId)}/confirm`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${accessToken}`
+      }
+    }
+  );
+
+  ensureOk(response, payload, "confirm pix payment");
+  assert.ok(payload?.payment?.status, "confirm payment response missing status");
+  console.log(`[smoke:e2e] PIX payment confirmed (${payload.payment.id}).`);
+  return payload;
+}
+
 async function presignUpload(accessToken) {
   const body = {
     fileName: "smoke-input.mp3",
@@ -200,6 +247,22 @@ async function main() {
   await waitForHealth();
 
   const accessToken = await registerUser();
+  const walletBeforeTopup = await getWallet(accessToken);
+  const pixPayment = await createPixPayment(accessToken, 10);
+  if (pixPayment?.pix?.providerMode === "mock") {
+    await confirmPixPayment(accessToken, pixPayment.payment.id);
+    const walletAfterTopup = await getWallet(accessToken);
+    assert.ok(
+      Number(walletAfterTopup.availableBalance) > Number(walletBeforeTopup.availableBalance),
+      "wallet balance did not increase after PIX confirmation"
+    );
+    console.log("[smoke:e2e] Wallet balance increased after PIX top-up.");
+  } else {
+    console.log(
+      "[smoke:e2e] PIX provider is mercado_pago. Automatic confirmation skipped in smoke."
+    );
+  }
+
   const presignPayload = await presignUpload(accessToken);
   await uploadMedia(presignPayload);
   const jobId = await createTranscription(accessToken, presignPayload.objectKey);

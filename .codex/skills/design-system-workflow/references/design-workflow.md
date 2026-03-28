@@ -21,6 +21,20 @@
 - Keep spacing scale consistent within the same screen section.
 - Keep contrast and state color semantics consistent.
 
+## Responsive and State QA Matrix
+
+- Mobile (<=768px):
+  - No clipped text or overflowed CTA.
+  - Navigation and main actions reachable without zoom.
+- Desktop (>=1024px):
+  - Hierarchy and spacing remain balanced.
+  - Dense data areas stay readable.
+- States:
+  - Loading visible and non-blocking.
+  - Empty state actionable.
+  - Error state with recovery path.
+  - Success state with clear next action.
+
 ## Layout Patterns for This Repo
 
 - Marketing/Landing sections:
@@ -44,3 +58,4 @@ When implementing from `docs/design`:
    - what changed and why.
 4. Validation:
    - desktop + mobile check completed.
+   - state coverage confirmed (loading/empty/error/success).

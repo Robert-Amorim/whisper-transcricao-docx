@@ -18,7 +18,7 @@ Construir uma aplicação web para transcrever áudios com Whisper API, com cobr
 - Retenção de áudio original: 7 dias.
 
 ## Arquitetura final (produção)
-- Frontend: `Next.js + TypeScript`.
+- Frontend: `React + Vite + TypeScript`.
 - API: `Node.js + TypeScript + Fastify`.
 - Worker: processo Node separado no `PM2`.
 - Fila: `BullMQ + Redis local`.

@@ -1,4 +1,4 @@
 interface:
   display_name: "PR Release Gate"
-  short_description: "Checklist de qualidade para PR e release"
-  default_prompt: "Aplicar quality gate de PR/release antes de merge e deploy."
+  short_description: "Gate de qualidade e risco para PR e deploy"
+  default_prompt: "Executar gate deterministico de PR/release na Voxora: classificar risco, rodar checks obrigatorios, verificar contratos/migracoes/rollback e concluir com Gate, Blockers, Risk notes e Next actions."

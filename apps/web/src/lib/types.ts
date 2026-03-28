@@ -7,9 +7,11 @@ export const JOB_STATUSES = [
   "failed"
 ] as const;
 
+export const PAYMENT_STATUSES = ["pending", "approved", "rejected", "expired"] as const;
 export const OUTPUT_FORMATS = ["txt", "srt"] as const;
 
 export type JobStatus = (typeof JOB_STATUSES)[number];
+export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 export type OutputFormat = (typeof OUTPUT_FORMATS)[number];
 
 export type SessionTokens = {
@@ -82,6 +84,7 @@ export type AuthResponse = {
   user: PublicUser;
   accessToken: string;
   refreshToken: string;
+  welcomeCredit?: string;
 };
 
 export type UploadPresignRequest = {
@@ -97,4 +100,25 @@ export type UploadPresignResponse = {
   requiredHeaders: Record<string, string>;
   maxBytes: number;
   expiresInSeconds: number;
+};
+
+export type PaymentSummary = {
+  id: string;
+  provider: "mercado_pago";
+  providerPaymentId: string;
+  amount: string;
+  status: PaymentStatus;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PixPaymentResponse = {
+  payment: PaymentSummary;
+  pix: {
+    providerMode: "mock" | "mercado_pago";
+    copyPasteCode: string;
+    expiresAt: string;
+    qrCodeBase64?: string | null;
+    ticketUrl?: string | null;
+  };
 };

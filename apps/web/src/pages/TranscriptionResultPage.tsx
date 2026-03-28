@@ -5,6 +5,7 @@ import {
   ApiError,
   downloadTranscriptionOutput,
   getErrorMessage,
+  getTranscriptionOutputText,
   getTranscription
 } from "../lib/api";
 import { clearSessionTokens, getSessionTokens } from "../lib/session";
@@ -40,6 +41,9 @@ export default function TranscriptionResultPage() {
   const [error, setError] = useState("");
   const [job, setJob] = useState<TranscriptionJobDetail | null>(null);
   const [downloadingFormat, setDownloadingFormat] = useState<OutputFormat | null>(null);
+  const [previewText, setPreviewText] = useState("");
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+  const [previewError, setPreviewError] = useState("");
 
   const fetchJob = useCallback(async () => {
     if (!jobId) {
@@ -98,6 +102,34 @@ export default function TranscriptionResultPage() {
 
   const txtAvailable = !!job && hasOutputFormat(job, "txt");
   const srtAvailable = !!job && hasOutputFormat(job, "srt");
+
+  const loadTxtPreview = useCallback(async () => {
+    if (!jobId || !txtAvailable) {
+      setPreviewText("");
+      setPreviewError("");
+      return;
+    }
+
+    setIsLoadingPreview(true);
+    setPreviewError("");
+    try {
+      const text = await getTranscriptionOutputText(jobId, "txt");
+      setPreviewText(text);
+    } catch (requestError) {
+      setPreviewError(
+        getErrorMessage(requestError, "Nao foi possivel carregar o preview do texto.")
+      );
+      setPreviewText("");
+    } finally {
+      setIsLoadingPreview(false);
+    }
+  }, [jobId, txtAvailable]);
+
+  useEffect(() => {
+    if (loadState === "ready" && txtAvailable) {
+      void loadTxtPreview();
+    }
+  }, [loadState, txtAvailable, loadTxtPreview]);
 
   return (
     <main className="result-page">
@@ -161,6 +193,32 @@ export default function TranscriptionResultPage() {
                 O texto completo pode ser baixado em TXT ou SRT. Esta tela consolida os metadados e
                 os formatos de exportacao do job concluido.
               </p>
+              <div className="result-preview-card">
+                <div className="result-preview-head">
+                  <strong>Preview do texto (TXT)</strong>
+                  <button
+                    type="button"
+                    onClick={() => void loadTxtPreview()}
+                    disabled={!txtAvailable || isLoadingPreview}
+                  >
+                    {isLoadingPreview ? "Carregando..." : "Atualizar preview"}
+                  </button>
+                </div>
+                {isLoadingPreview ? (
+                  <p className="result-inline">Carregando preview...</p>
+                ) : null}
+                {previewError ? (
+                  <p className="result-inline result-inline-error">{previewError}</p>
+                ) : null}
+                {!isLoadingPreview && !previewError && txtAvailable ? (
+                  <pre className="result-preview-text">
+                    {previewText || "Nenhum conteúdo disponível no TXT."}
+                  </pre>
+                ) : null}
+                {!txtAvailable ? (
+                  <p className="result-inline">O preview fica disponível quando o TXT for gerado.</p>
+                ) : null}
+              </div>
               <StatusStateGrid
                 containerClassName="result-state-row"
                 itemBaseClassName="result-state"

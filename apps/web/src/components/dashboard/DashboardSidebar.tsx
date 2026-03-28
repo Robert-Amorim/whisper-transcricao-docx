@@ -45,7 +45,7 @@ export default function DashboardSidebar({ user, activeMenu = "dashboard" }: Das
           <span className="material-symbols-outlined">description</span>
           <span>Transcrições</span>
         </Link>
-        <Link to="/dashboard#atividade" className={getNavClass(activeMenu === "wallet")}>
+        <Link to="/dashboard#creditos" className={getNavClass(activeMenu === "wallet")}>
           <span className="material-symbols-outlined">account_balance_wallet</span>
           <span>Carteira</span>
         </Link>

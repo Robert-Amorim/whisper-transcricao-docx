@@ -3,6 +3,9 @@ import type {
   AuthResponse,
   JobStatus,
   OutputFormat,
+  PaymentStatus,
+  PaymentSummary,
+  PixPaymentResponse,
   PublicUser,
   SessionTokens,
   TranscriptionJob,
@@ -239,6 +242,37 @@ export async function listWalletLedger(limit = 50, type?: WalletLedgerEntry["typ
   });
 }
 
+export async function listPayments(limit = 20, status?: PaymentStatus) {
+  const query = new URLSearchParams({
+    limit: String(limit)
+  });
+  if (status) {
+    query.set("status", status);
+  }
+
+  return requestJson<{ items: PaymentSummary[] }>(`/v1/payments?${query.toString()}`, {
+    auth: true
+  });
+}
+
+export async function createPixPayment(payload: { amount: number }) {
+  return requestJson<PixPaymentResponse>("/v1/payments/pix", {
+    method: "POST",
+    body: payload,
+    auth: true
+  });
+}
+
+export async function confirmPixPayment(paymentId: string) {
+  return requestJson<{ payment: PaymentSummary; credited: boolean }>(
+    `/v1/payments/${encodeURIComponent(paymentId)}/confirm`,
+    {
+      method: "POST",
+      auth: true
+    }
+  );
+}
+
 export async function listTranscriptions(params?: { limit?: number; status?: JobStatus }) {
   const query = new URLSearchParams({
     limit: String(params?.limit ?? 20)
@@ -289,6 +323,16 @@ export async function createTranscription(payload: { sourceObjectKey: string; la
   });
 }
 
+export async function reprocessTranscription(jobId: string) {
+  return requestJson<{ job: TranscriptionJob }>(
+    `/v1/transcriptions/${encodeURIComponent(jobId)}/reprocess`,
+    {
+      method: "POST",
+      auth: true
+    }
+  );
+}
+
 function getFilenameFromDisposition(headerValue: string | null, fallback: string) {
   if (!headerValue) {
     return fallback;
@@ -329,4 +373,19 @@ export async function downloadTranscriptionOutput(jobId: string, format: OutputF
     blob,
     fileName
   };
+}
+
+export async function getTranscriptionOutputText(jobId: string, format: OutputFormat) {
+  const response = await requestRaw(
+    `/v1/transcriptions/${encodeURIComponent(jobId)}/download?format=${format}`,
+    {
+      auth: true
+    }
+  );
+
+  if (!response.ok) {
+    throw await parseError(response);
+  }
+
+  return response.text();
 }

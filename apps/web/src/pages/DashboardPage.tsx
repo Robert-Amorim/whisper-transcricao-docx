@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import CreditManagementPanel from "../components/dashboard/CreditManagementPanel";
 import DashboardSidebar from "../components/dashboard/DashboardSidebar";
 import DashboardStatsGrid from "../components/dashboard/DashboardStatsGrid";
 import DashboardTopbar from "../components/dashboard/DashboardTopbar";
@@ -7,8 +8,12 @@ import LedgerPanel from "../components/dashboard/LedgerPanel";
 import OptimizationTip from "../components/dashboard/OptimizationTip";
 import {
   ApiError,
+  confirmPixPayment,
+  createPixPayment,
   getErrorMessage,
   getMe,
+  listPayments,
+  reprocessTranscription,
   getWallet,
   listTranscriptions,
   listWalletLedger
@@ -16,6 +21,8 @@ import {
 import { clearSessionTokens, getSessionTokens } from "../lib/session";
 import { PROCESSING_STATUSES } from "../lib/transcriptions";
 import {
+  type PaymentSummary,
+  type PixPaymentResponse,
   type PublicUser,
   type TranscriptionJob,
   type WalletLedgerEntry,
@@ -24,6 +31,7 @@ import {
 import { useNavigate } from "react-router-dom";
 
 type LoadState = "loading" | "ready" | "error";
+type FeedbackTone = "neutral" | "success" | "error";
 
 export default function DashboardPage() {
   const navigate = useNavigate();
@@ -34,7 +42,18 @@ export default function DashboardPage() {
   const [wallet, setWallet] = useState<WalletSummary | null>(null);
   const [ledger, setLedger] = useState<WalletLedgerEntry[]>([]);
   const [jobs, setJobs] = useState<TranscriptionJob[]>([]);
+  const [payments, setPayments] = useState<PaymentSummary[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [topUpAmountInput, setTopUpAmountInput] = useState("20");
+  const [paymentFeedbackMessage, setPaymentFeedbackMessage] = useState("");
+  const [paymentFeedbackTone, setPaymentFeedbackTone] = useState<FeedbackTone>("neutral");
+  const [activePixPayment, setActivePixPayment] = useState<PixPaymentResponse | null>(null);
+  const [isCreatingPayment, setIsCreatingPayment] = useState(false);
+  const [isConfirmingMockPayment, setIsConfirmingMockPayment] = useState(false);
+  const [isRefreshingData, setIsRefreshingData] = useState(false);
+  const [jobsFeedbackMessage, setJobsFeedbackMessage] = useState("");
+  const [jobsFeedbackTone, setJobsFeedbackTone] = useState<FeedbackTone>("neutral");
+  const [retryingJobIds, setRetryingJobIds] = useState<string[]>([]);
 
   const hasProcessingJobs = useMemo(
     () => jobs.some((job) => PROCESSING_STATUSES.includes(job.status)),
@@ -103,28 +122,55 @@ export default function DashboardPage() {
     )[0];
   }, [ledger]);
 
+  const focusCreditsPanel = useCallback(() => {
+    const target = document.getElementById("creditos");
+    if (!target) {
+      return;
+    }
+    target.scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
+  }, []);
+
   const loadDashboard = useCallback(
     async (options?: { isRefresh?: boolean }) => {
       if (!options?.isRefresh) {
         setLoadState("loading");
+      } else {
+        setIsRefreshingData(true);
       }
       setLoadError("");
 
       try {
-        const [currentUser, currentWallet, currentJobs, currentLedger] = await Promise.all([
+        const [currentUser, currentWallet, currentJobs, currentLedger, currentPayments] =
+          await Promise.all([
           getMe(),
           getWallet(),
           listTranscriptions({
             limit: 50
           }),
-          listWalletLedger(10)
+          listWalletLedger(20),
+          listPayments(20)
         ]);
 
         setUser(currentUser);
         setWallet(currentWallet);
         setJobs(currentJobs.items);
         setLedger(currentLedger.items);
+        setPayments(currentPayments.items);
         setLoadState("ready");
+
+        const welcomeCredit = window.sessionStorage.getItem("voxora_welcome_credit");
+        if (welcomeCredit) {
+          setPaymentFeedbackTone("success");
+          setPaymentFeedbackMessage(
+            `Conta criada com sucesso. Crédito inicial liberado: R$ ${Number(
+              welcomeCredit
+            ).toFixed(2)}.`
+          );
+          window.sessionStorage.removeItem("voxora_welcome_credit");
+        }
       } catch (error) {
         if (error instanceof ApiError && error.status === 401) {
           clearSessionTokens();
@@ -134,9 +180,115 @@ export default function DashboardPage() {
 
         setLoadError(getErrorMessage(error, "Nao foi possivel carregar o dashboard."));
         setLoadState("error");
+      } finally {
+        setIsRefreshingData(false);
       }
     },
     [navigate]
+  );
+
+  const handleCreatePixPayment = useCallback(async () => {
+    const parsed = Number.parseFloat(topUpAmountInput.replace(",", "."));
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      setPaymentFeedbackTone("error");
+      setPaymentFeedbackMessage("Informe um valor de recarga válido.");
+      return;
+    }
+
+    setIsCreatingPayment(true);
+    setPaymentFeedbackTone("neutral");
+    setPaymentFeedbackMessage("Gerando cobrança PIX...");
+
+    try {
+      const created = await createPixPayment({
+        amount: parsed
+      });
+      setActivePixPayment(created);
+      setPaymentFeedbackTone("success");
+      setPaymentFeedbackMessage(
+        "PIX gerado com sucesso. Conclua o pagamento para liberar os créditos."
+      );
+      await loadDashboard({ isRefresh: true });
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        clearSessionTokens();
+        navigate("/login", { replace: true });
+        return;
+      }
+      setPaymentFeedbackTone("error");
+      setPaymentFeedbackMessage(getErrorMessage(error, "Falha ao gerar pagamento PIX."));
+    } finally {
+      setIsCreatingPayment(false);
+    }
+  }, [loadDashboard, navigate, topUpAmountInput]);
+
+  const handleConfirmMockPayment = useCallback(async () => {
+    const paymentId = activePixPayment?.payment.id;
+    if (!paymentId) {
+      return;
+    }
+
+    setIsConfirmingMockPayment(true);
+    setPaymentFeedbackTone("neutral");
+    setPaymentFeedbackMessage("Confirmando pagamento...");
+
+    try {
+      await confirmPixPayment(paymentId);
+      setPaymentFeedbackTone("success");
+      setPaymentFeedbackMessage("Pagamento confirmado e créditos adicionados na carteira.");
+      setActivePixPayment(null);
+      await loadDashboard({ isRefresh: true });
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        clearSessionTokens();
+        navigate("/login", { replace: true });
+        return;
+      }
+      setPaymentFeedbackTone("error");
+      setPaymentFeedbackMessage(getErrorMessage(error, "Não foi possível confirmar o pagamento."));
+    } finally {
+      setIsConfirmingMockPayment(false);
+    }
+  }, [activePixPayment?.payment.id, loadDashboard, navigate]);
+
+  const handleRetryFailedJob = useCallback(
+    async (jobId: string) => {
+      let shouldProcess = false;
+      setRetryingJobIds((current) => {
+        if (current.includes(jobId)) {
+          return current;
+        }
+        shouldProcess = true;
+        return [...current, jobId];
+      });
+      if (!shouldProcess) {
+        return;
+      }
+
+      setJobsFeedbackTone("neutral");
+      setJobsFeedbackMessage("Reenfileirando job para novo processamento...");
+
+      try {
+        await reprocessTranscription(jobId);
+        setJobsFeedbackTone("success");
+        setJobsFeedbackMessage("Job reenfileirado com sucesso. Acompanhe o status em tempo real.");
+        await loadDashboard({ isRefresh: true });
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 401) {
+          clearSessionTokens();
+          navigate("/login", { replace: true });
+          return;
+        }
+
+        setJobsFeedbackTone("error");
+        setJobsFeedbackMessage(
+          getErrorMessage(error, "Nao foi possivel reenfileirar o job para reprocessamento.")
+        );
+      } finally {
+        setRetryingJobIds((current) => current.filter((id) => id !== jobId));
+      }
+    },
+    [loadDashboard, navigate]
   );
 
   useEffect(() => {
@@ -173,17 +325,35 @@ export default function DashboardPage() {
               walletUsagePercent={walletUsagePercent}
               todayUsageSeconds={todayUsageSeconds}
               latestCreditEntry={latestCreditEntry}
+              onAddCreditsClick={focusCreditsPanel}
             />
 
             <div className="grid grid-cols-12 gap-8">
               <JobsTable
                 loadState={loadState}
                 loadError={loadError}
-                jobs={visibleJobs.slice(0, 6)}
+                jobs={visibleJobs}
+                onRetryFailedJob={handleRetryFailedJob}
+                retryingJobIds={retryingJobIds}
+                feedbackMessage={jobsFeedbackMessage}
+                feedbackTone={jobsFeedbackTone}
               />
 
               <div className="col-span-4 space-y-4">
                 <LedgerPanel ledger={ledger} />
+                <CreditManagementPanel
+                  amountInput={topUpAmountInput}
+                  onAmountInputChange={setTopUpAmountInput}
+                  onCreatePixPayment={handleCreatePixPayment}
+                  isCreatingPayment={isCreatingPayment}
+                  isRefreshingData={isRefreshingData}
+                  activePix={activePixPayment}
+                  onConfirmMockPayment={handleConfirmMockPayment}
+                  isConfirmingMockPayment={isConfirmingMockPayment}
+                  payments={payments}
+                  feedbackMessage={paymentFeedbackMessage}
+                  feedbackTone={paymentFeedbackTone}
+                />
                 <OptimizationTip />
               </div>
             </div>
