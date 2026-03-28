@@ -277,16 +277,16 @@ button:focus-visible {
   width: 100%;
   margin-top: 6px;
   padding: 8px 12px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--clarity-border-strong);
   border-radius: 8px;
-  background: #fff;
+  background: var(--clarity-surface-strong);
   font-size: 0.9rem;
-  color: #111827;
+  color: var(--clarity-text);
   outline: none;
 }
 
 .newtx-select:focus {
-  border-color: #2b8cee;
+  border-color: var(--clarity-accent);
   box-shadow: 0 0 0 3px rgba(43, 140, 238, 0.15);
 }
 
@@ -299,7 +299,7 @@ button:focus-visible {
 .newtx-progress-bar {
   flex: 1;
   height: 6px;
-  background: #e5e7eb;
+  background: var(--clarity-border);
   border-radius: 99px;
   overflow: hidden;
 }

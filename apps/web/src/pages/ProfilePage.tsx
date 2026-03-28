@@ -256,7 +256,7 @@ export default function ProfilePage() {
                       required
                       value={name}
                       onChange={(event) => setName(event.target.value)}
-                      className="h-12 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-primary dark:border-slate-800 dark:bg-[#111418]"
+                      className="h-12 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-primary dark:border-slate-800 dark:bg-background-dark"
                       placeholder="Seu nome"
                     />
                   </label>
@@ -268,7 +268,7 @@ export default function ProfilePage() {
                       required
                       value={email}
                       onChange={(event) => setEmail(event.target.value)}
-                      className="h-12 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-primary dark:border-slate-800 dark:bg-[#111418]"
+                      className="h-12 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-primary dark:border-slate-800 dark:bg-background-dark"
                       placeholder="seu@email.com"
                     />
                   </label>
@@ -311,7 +311,7 @@ export default function ProfilePage() {
                         autoComplete="current-password"
                         value={currentPassword}
                         onChange={(event) => setCurrentPassword(event.target.value)}
-                        className="h-12 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-primary dark:border-slate-800 dark:bg-[#111418]"
+                        className="h-12 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-primary dark:border-slate-800 dark:bg-background-dark"
                         placeholder="••••••••"
                       />
                     </label>
@@ -324,7 +324,7 @@ export default function ProfilePage() {
                         minLength={8}
                         value={newPassword}
                         onChange={(event) => setNewPassword(event.target.value)}
-                        className="h-12 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-primary dark:border-slate-800 dark:bg-[#111418]"
+                        className="h-12 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-primary dark:border-slate-800 dark:bg-background-dark"
                         placeholder="Mínimo 8 caracteres"
                       />
                     </label>
@@ -337,7 +337,7 @@ export default function ProfilePage() {
                         minLength={8}
                         value={confirmPassword}
                         onChange={(event) => setConfirmPassword(event.target.value)}
-                        className="h-12 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-primary dark:border-slate-800 dark:bg-[#111418]"
+                        className="h-12 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-primary dark:border-slate-800 dark:bg-background-dark"
                         placeholder="Repita a nova senha"
                       />
                     </label>

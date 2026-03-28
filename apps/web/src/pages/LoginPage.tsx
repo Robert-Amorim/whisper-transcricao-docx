@@ -158,7 +158,7 @@ export default function LoginPage() {
           </article>
 
           <div className="flex flex-col">
-            <article className="flex h-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-[#1c2127] lg:min-h-[690px]">
+            <article className="flex h-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-surface-dark lg:min-h-[690px]">
               <div className="flex border-b border-slate-200 dark:border-slate-800" role="tablist" aria-label="modo de autenticacao">
                 <button
                   type="button"
@@ -201,7 +201,7 @@ export default function LoginPage() {
                         value={name}
                         onChange={(event) => setName(event.target.value)}
                         placeholder="Seu nome completo"
-                        className="h-12 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-primary dark:border-slate-800 dark:bg-[#111418]"
+                        className="h-12 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-primary dark:border-slate-800 dark:bg-background-dark"
                       />
                     </div>
                   ) : null}
@@ -215,7 +215,7 @@ export default function LoginPage() {
                       value={email}
                       onChange={(event) => setEmail(event.target.value)}
                       placeholder="seu@email.com"
-                      className="h-12 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-primary dark:border-slate-800 dark:bg-[#111418]"
+                      className="h-12 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-primary dark:border-slate-800 dark:bg-background-dark"
                     />
                   </div>
 
@@ -237,7 +237,7 @@ export default function LoginPage() {
                         value={password}
                         onChange={(event) => setPassword(event.target.value)}
                         placeholder="••••••••"
-                        className="h-12 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 pr-12 outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-primary dark:border-slate-800 dark:bg-[#111418]"
+                        className="h-12 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 pr-12 outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-primary dark:border-slate-800 dark:bg-background-dark"
                       />
                       <button
                         type="button"
