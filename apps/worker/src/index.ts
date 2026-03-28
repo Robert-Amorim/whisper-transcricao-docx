@@ -67,6 +67,8 @@ const envSchema = z.object({
   RAW_UPLOAD_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(7),
   RAW_UPLOAD_CLEANUP_INTERVAL_MINUTES: z.coerce.number().int().min(5).max(1440).default(60),
   RAW_UPLOAD_CLEANUP_BATCH_SIZE: z.coerce.number().int().min(1).max(1000).default(100),
+  OUTPUT_RETENTION_DAYS: z.coerce.number().int().min(1).max(3650).default(90),
+  OUTPUT_CLEANUP_BATCH_SIZE: z.coerce.number().int().min(1).max(1000).default(100),
   PRICE_PER_MINUTE: z.coerce.number().positive().default(0.27),
   UPLOADS_DIR: z.string().default("storage/uploads"),
   OUTPUTS_DIR: z.string().default("storage/outputs"),
@@ -668,6 +670,7 @@ const queueEvents = new QueueEvents(env.TRANSCRIPTION_QUEUE, {
 });
 
 let cleanupInFlight = false;
+let outputCleanupInFlight = false;
 let cleanupTimer: NodeJS.Timeout | null = null;
 
 async function cleanupExpiredRawUploads(trigger: "startup" | "interval") {
@@ -713,16 +716,19 @@ async function cleanupExpiredRawUploads(trigger: "startup" | "interval") {
       try {
         if (objectStorage) {
           await objectStorage.deleteObject(expiredJob.sourceObjectKey);
-          removed += 1;
-          continue;
+        } else {
+          const sourceFilePath = resolveStoragePath(uploadsRootDir, expiredJob.sourceObjectKey);
+          if (!sourceFilePath || !existsSync(sourceFilePath)) {
+            skipped += 1;
+            continue;
+          }
+          await unlink(sourceFilePath);
         }
 
-        const sourceFilePath = resolveStoragePath(uploadsRootDir, expiredJob.sourceObjectKey);
-        if (!sourceFilePath || !existsSync(sourceFilePath)) {
-          skipped += 1;
-          continue;
-        }
-        await unlink(sourceFilePath);
+        await prisma.transcriptionJob.update({
+          where: { id: expiredJob.id },
+          data: { sourceObjectKey: "" }
+        });
         removed += 1;
       } catch (error) {
         const statusCode = getErrorStatusCode(error);
@@ -749,6 +755,91 @@ async function cleanupExpiredRawUploads(trigger: "startup" | "interval") {
     });
   } finally {
     cleanupInFlight = false;
+  }
+}
+
+async function cleanupExpiredOutputs(trigger: "startup" | "interval") {
+  if (outputCleanupInFlight) {
+    return;
+  }
+  outputCleanupInFlight = true;
+
+  const cutoff = new Date(Date.now() - env.OUTPUT_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  try {
+    const expiredOutputs = await prisma.jobOutput.findMany({
+      where: {
+        createdAt: {
+          lt: cutoff
+        }
+      },
+      orderBy: {
+        createdAt: "asc"
+      },
+      take: env.OUTPUT_CLEANUP_BATCH_SIZE,
+      select: {
+        id: true,
+        jobId: true,
+        format: true,
+        objectKey: true,
+        job: {
+          select: { userId: true }
+        }
+      }
+    });
+
+    if (expiredOutputs.length === 0) {
+      return;
+    }
+
+    let removed = 0;
+    let skipped = 0;
+    for (const output of expiredOutputs) {
+      if (!output.objectKey.startsWith("outputs/")) {
+        skipped += 1;
+        continue;
+      }
+
+      try {
+        if (objectStorage) {
+          await objectStorage.deleteObject(output.objectKey);
+        } else {
+          const outputFilePath = resolveStoragePath(outputsRootDir, output.objectKey);
+          if (!outputFilePath || !existsSync(outputFilePath)) {
+            skipped += 1;
+            continue;
+          }
+          await unlink(outputFilePath);
+        }
+
+        await prisma.jobOutput.delete({ where: { id: output.id } });
+        removed += 1;
+      } catch (error) {
+        const statusCode = getErrorStatusCode(error);
+        if (statusCode === 404 || toErrorMessage(error).includes("ENOENT")) {
+          await prisma.jobOutput.delete({ where: { id: output.id } }).catch(() => undefined);
+          skipped += 1;
+          continue;
+        }
+        logWorker("warn", "Failed to cleanup expired output.", {
+          trigger,
+          job_id: output.jobId,
+          output_id: output.id,
+          format: output.format,
+          object_key: output.objectKey,
+          error: toErrorMessage(error)
+        });
+      }
+    }
+
+    logWorker("info", "Expired output cleanup completed.", {
+      trigger,
+      retention_days: env.OUTPUT_RETENTION_DAYS,
+      scanned: expiredOutputs.length,
+      removed,
+      skipped
+    });
+  } finally {
+    outputCleanupInFlight = false;
   }
 }
 
@@ -1166,8 +1257,10 @@ worker.on("ready", async () => {
   });
 
   void cleanupExpiredRawUploads("startup");
+  void cleanupExpiredOutputs("startup");
   cleanupTimer = setInterval(() => {
     void cleanupExpiredRawUploads("interval");
+    void cleanupExpiredOutputs("interval");
   }, env.RAW_UPLOAD_CLEANUP_INTERVAL_MINUTES * 60 * 1000);
   cleanupTimer.unref();
 });

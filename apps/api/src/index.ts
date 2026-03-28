@@ -71,7 +71,7 @@ const envSchema = z.object({
   OCI_REGION: z.string().optional(),
   OCI_NAMESPACE: z.string().optional(),
   OCI_BUCKET: z.string().optional(),
-  OCI_READ_URL_TTL_MINUTES: z.coerce.number().int().min(1).max(43200).default(10080),
+  OCI_READ_URL_TTL_MINUTES: z.coerce.number().int().min(1).max(43200).default(60),
   JWT_SECRET: z.string().min(16).default("change-this-secret-to-a-secure-value"),
   JWT_EXPIRES_IN: z.string().default("15m"),
   JWT_REFRESH_EXPIRES_IN: z.string().default("7d"),
@@ -1945,6 +1945,12 @@ async function registerRoutes() {
         return reply.code(409).send({
           message: "Only failed jobs can be reprocessed.",
           job: serializeTranscriptionJob(job)
+        });
+      }
+
+      if (!job.sourceObjectKey) {
+        return reply.code(410).send({
+          message: "Source file was deleted during retention cleanup and can no longer be reprocessed."
         });
       }
 
