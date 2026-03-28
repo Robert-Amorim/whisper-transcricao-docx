@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Navigate } from "react-router-dom";
+import Spinner from "./common/Spinner";
 import { getSessionTokens } from "../lib/session";
 
 type Props = {
@@ -17,7 +18,11 @@ export default function ProtectedRoute({ children }: Props) {
   }, []);
 
   if (!checked) {
-    return null;
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <Spinner size="lg" className="text-primary" />
+      </div>
+    );
   }
 
   if (!authenticated) {

@@ -167,7 +167,7 @@ export default function CreditManagementPanel({
           </p>
         ) : (
           <div className="space-y-2">
-            {payments.slice(0, 6).map((payment) => (
+            {payments.map((payment) => (
               <div
                 key={payment.id}
                 className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-800"

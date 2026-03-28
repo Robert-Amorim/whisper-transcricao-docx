@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import CreditManagementPanel from "../components/dashboard/CreditManagementPanel";
 import DashboardSidebar from "../components/dashboard/DashboardSidebar";
 import DashboardStatsGrid from "../components/dashboard/DashboardStatsGrid";
@@ -54,6 +54,8 @@ export default function DashboardPage() {
   const [jobsFeedbackMessage, setJobsFeedbackMessage] = useState("");
   const [jobsFeedbackTone, setJobsFeedbackTone] = useState<FeedbackTone>("neutral");
   const [retryingJobIds, setRetryingJobIds] = useState<string[]>([]);
+  const paymentFeedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const jobsFeedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const JOBS_PAGE_SIZE = 20;
   const LEDGER_PAGE_SIZE = 8;
@@ -131,6 +133,24 @@ export default function DashboardPage() {
     )[0];
   }, [ledger]);
 
+  const setPaymentFeedback = useCallback((tone: FeedbackTone, message: string) => {
+    if (paymentFeedbackTimer.current) clearTimeout(paymentFeedbackTimer.current);
+    setPaymentFeedbackTone(tone);
+    setPaymentFeedbackMessage(message);
+    if (tone !== "neutral") {
+      paymentFeedbackTimer.current = setTimeout(() => setPaymentFeedbackMessage(""), 6000);
+    }
+  }, []);
+
+  const setJobsFeedback = useCallback((tone: FeedbackTone, message: string) => {
+    if (jobsFeedbackTimer.current) clearTimeout(jobsFeedbackTimer.current);
+    setJobsFeedbackTone(tone);
+    setJobsFeedbackMessage(message);
+    if (tone !== "neutral") {
+      jobsFeedbackTimer.current = setTimeout(() => setJobsFeedbackMessage(""), 6000);
+    }
+  }, []);
+
   const focusCreditsPanel = useCallback(() => {
     const target = document.getElementById("creditos");
     if (!target) {
@@ -161,7 +181,7 @@ export default function DashboardPage() {
           getWallet(),
           listTranscriptions({ limit: JOBS_PAGE_SIZE, offset: currentJobsPage * JOBS_PAGE_SIZE }),
           listWalletLedger({ limit: LEDGER_PAGE_SIZE, offset: currentLedgerPage * LEDGER_PAGE_SIZE }),
-          listPayments({ limit: 20 })
+          listPayments({ limit: 6 })
         ]);
 
         setUser(currentUser);
@@ -177,11 +197,9 @@ export default function DashboardPage() {
 
         const welcomeCredit = window.sessionStorage.getItem("voxora_welcome_credit");
         if (welcomeCredit) {
-          setPaymentFeedbackTone("success");
-          setPaymentFeedbackMessage(
-            `Conta criada com sucesso. Crédito inicial liberado: R$ ${Number(
-              welcomeCredit
-            ).toFixed(2)}.`
+          setPaymentFeedback(
+            "success",
+            `Conta criada com sucesso. Crédito inicial liberado: R$ ${Number(welcomeCredit).toFixed(2)}.`
           );
           window.sessionStorage.removeItem("voxora_welcome_credit");
         }
@@ -214,24 +232,17 @@ export default function DashboardPage() {
   const handleCreatePixPayment = useCallback(async () => {
     const parsed = Number.parseFloat(topUpAmountInput.replace(",", "."));
     if (!Number.isFinite(parsed) || parsed <= 0) {
-      setPaymentFeedbackTone("error");
-      setPaymentFeedbackMessage("Informe um valor de recarga válido.");
+      setPaymentFeedback("error", "Informe um valor de recarga válido.");
       return;
     }
 
     setIsCreatingPayment(true);
-    setPaymentFeedbackTone("neutral");
-    setPaymentFeedbackMessage("Gerando cobrança PIX...");
+    setPaymentFeedback("neutral", "Gerando cobrança PIX...");
 
     try {
-      const created = await createPixPayment({
-        amount: parsed
-      });
+      const created = await createPixPayment({ amount: parsed });
       setActivePixPayment(created);
-      setPaymentFeedbackTone("success");
-      setPaymentFeedbackMessage(
-        "PIX gerado com sucesso. Conclua o pagamento para liberar os créditos."
-      );
+      setPaymentFeedback("success", "PIX gerado com sucesso. Conclua o pagamento para liberar os créditos.");
       await loadDashboard({ isRefresh: true });
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
@@ -239,12 +250,11 @@ export default function DashboardPage() {
         navigate("/login", { replace: true });
         return;
       }
-      setPaymentFeedbackTone("error");
-      setPaymentFeedbackMessage(getErrorMessage(error, "Falha ao gerar pagamento PIX."));
+      setPaymentFeedback("error", getErrorMessage(error, "Falha ao gerar pagamento PIX."));
     } finally {
       setIsCreatingPayment(false);
     }
-  }, [loadDashboard, navigate, topUpAmountInput]);
+  }, [loadDashboard, navigate, setPaymentFeedback, topUpAmountInput]);
 
   const handleConfirmMockPayment = useCallback(async () => {
     const paymentId = activePixPayment?.payment.id;
@@ -253,13 +263,11 @@ export default function DashboardPage() {
     }
 
     setIsConfirmingMockPayment(true);
-    setPaymentFeedbackTone("neutral");
-    setPaymentFeedbackMessage("Confirmando pagamento...");
+    setPaymentFeedback("neutral", "Confirmando pagamento...");
 
     try {
       await confirmPixPayment(paymentId);
-      setPaymentFeedbackTone("success");
-      setPaymentFeedbackMessage("Pagamento confirmado e créditos adicionados na carteira.");
+      setPaymentFeedback("success", "Pagamento confirmado e créditos adicionados na carteira.");
       setActivePixPayment(null);
       await loadDashboard({ isRefresh: true });
     } catch (error) {
@@ -268,12 +276,11 @@ export default function DashboardPage() {
         navigate("/login", { replace: true });
         return;
       }
-      setPaymentFeedbackTone("error");
-      setPaymentFeedbackMessage(getErrorMessage(error, "Não foi possível confirmar o pagamento."));
+      setPaymentFeedback("error", getErrorMessage(error, "Não foi possível confirmar o pagamento."));
     } finally {
       setIsConfirmingMockPayment(false);
     }
-  }, [activePixPayment?.payment.id, loadDashboard, navigate]);
+  }, [activePixPayment?.payment.id, loadDashboard, navigate, setPaymentFeedback]);
 
   const handleRetryFailedJob = useCallback(
     async (jobId: string) => {
@@ -289,13 +296,11 @@ export default function DashboardPage() {
         return;
       }
 
-      setJobsFeedbackTone("neutral");
-      setJobsFeedbackMessage("Reenfileirando job para novo processamento...");
+      setJobsFeedback("neutral", "Reenfileirando job para novo processamento...");
 
       try {
         await reprocessTranscription(jobId);
-        setJobsFeedbackTone("success");
-        setJobsFeedbackMessage("Job reenfileirado com sucesso. Acompanhe o status em tempo real.");
+        setJobsFeedback("success", "Job reenfileirado com sucesso. Acompanhe o status em tempo real.");
         await loadDashboard({ isRefresh: true });
       } catch (error) {
         if (error instanceof ApiError && error.status === 401) {
@@ -304,15 +309,12 @@ export default function DashboardPage() {
           return;
         }
 
-        setJobsFeedbackTone("error");
-        setJobsFeedbackMessage(
-          getErrorMessage(error, "Nao foi possivel reenfileirar o job para reprocessamento.")
-        );
+        setJobsFeedback("error", getErrorMessage(error, "Nao foi possivel reenfileirar o job para reprocessamento."));
       } finally {
         setRetryingJobIds((current) => current.filter((id) => id !== jobId));
       }
     },
-    [loadDashboard, navigate]
+    [loadDashboard, navigate, setJobsFeedback]
   );
 
   useEffect(() => {

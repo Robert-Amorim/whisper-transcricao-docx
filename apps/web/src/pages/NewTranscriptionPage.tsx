@@ -7,8 +7,7 @@ import {
   createTranscription,
   createUploadPresign,
   getErrorMessage,
-  getMe,
-  uploadToPresignedUrl
+  getMe
 } from "../lib/api";
 import { clearSessionTokens, getSessionTokens } from "../lib/session";
 

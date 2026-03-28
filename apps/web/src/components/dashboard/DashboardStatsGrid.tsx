@@ -38,7 +38,6 @@ export default function DashboardStatsGrid({
         </div>
         <div className="flex items-baseline gap-2">
           <h3 className="text-3xl font-bold">{walletValue}</h3>
-          <span className="text-xs font-semibold text-emerald-500">+12%</span>
         </div>
         <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
           <div className="h-full bg-primary" style={{ width: `${walletProgress}%` }} />
@@ -48,11 +47,10 @@ export default function DashboardStatsGrid({
       <article className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
         <div className="mb-4 flex items-start justify-between">
           <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Consumo hoje</p>
-          <span className="font-mono text-[10px] text-slate-400">/v1/usage</span>
+          <span className="font-mono text-[10px] text-slate-400">GET /v1/transcriptions</span>
         </div>
         <div className="flex items-baseline gap-2">
           <h3 className="text-3xl font-bold">{usageValue}</h3>
-          <span className="text-xs font-semibold text-emerald-500">+5%</span>
         </div>
         <div className="mt-4 flex gap-1">
           <div className="h-1 flex-1 rounded-full bg-primary/20" />
@@ -65,11 +63,10 @@ export default function DashboardStatsGrid({
       <article className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
         <div className="mb-4 flex items-start justify-between">
           <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Última recarga</p>
-          <span className="font-mono text-[10px] text-slate-400">GET /v1/billing</span>
+          <span className="font-mono text-[10px] text-slate-400">GET /v1/wallet/ledger</span>
         </div>
         <div className="flex items-baseline gap-2">
           <h3 className="text-3xl font-bold">{lastRechargeDate}</h3>
-          <span className="text-xs font-semibold text-slate-400 dark:text-slate-400">Há 2 dias</span>
         </div>
         <button
           type="button"

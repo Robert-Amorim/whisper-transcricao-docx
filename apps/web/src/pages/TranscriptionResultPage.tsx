@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import Spinner from "../components/common/Spinner";
 import StatusStateGrid from "../components/common/StatusStateGrid";
@@ -41,6 +41,7 @@ export default function TranscriptionResultPage() {
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [previewError, setPreviewError] = useState("");
   const [copyLabel, setCopyLabel] = useState("Copiar");
+  const previewGenRef = useRef(0);
 
   const fetchJob = useCallback(async () => {
     if (!jobId) { setLoadState("error"); setError("ID da transcrição ausente."); return; }
@@ -71,16 +72,21 @@ export default function TranscriptionResultPage() {
     const available = format === "txt" ? txtAvailable : srtAvailable;
     if (!jobId || !available) return;
 
+    previewGenRef.current += 1;
+    const gen = previewGenRef.current;
+
     setIsLoadingPreview(true);
     setPreviewError("");
     try {
       const text = await getTranscriptionOutputText(jobId, format);
+      if (gen !== previewGenRef.current) return;
       if (format === "txt") setTxtText(text);
       else setSrtText(text);
     } catch (requestError) {
+      if (gen !== previewGenRef.current) return;
       setPreviewError(getErrorMessage(requestError, "Não foi possível carregar o preview."));
     } finally {
-      setIsLoadingPreview(false);
+      if (gen === previewGenRef.current) setIsLoadingPreview(false);
     }
   }, [jobId, txtAvailable, srtAvailable]);
 
