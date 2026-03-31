@@ -29,6 +29,39 @@ export type MercadoPagoPaymentStatusResponse = {
   raw: unknown;
 };
 
+export type MercadoPagoCardPaymentRequest = {
+  amount: number;
+  token: string;
+  description: string;
+  externalReference: string;
+  idempotencyKey: string;
+  installments: number;
+  paymentMethodId: string;
+  issuerId?: string;
+  notificationUrl?: string;
+  payer: {
+    email: string;
+    identification?: {
+      type: string;
+      number: string;
+    };
+  };
+  processingMode?: string;
+  paymentMethodOptionId?: string;
+};
+
+export type MercadoPagoCardPaymentResponse = {
+  id: string;
+  status: string;
+  statusDetail: string | null;
+  paymentMethodId: string | null;
+  paymentTypeId: string | null;
+  installments: number | null;
+  issuerId: string | null;
+  lastFourDigits: string | null;
+  raw: unknown;
+};
+
 function normalizeApiBaseUrl(url: string) {
   return url.replace(/\/+$/, "");
 }
@@ -138,6 +171,76 @@ export function createMercadoPagoClient(config: MercadoPagoClientConfig) {
           typeof record.date_of_expiration === "string"
             ? record.date_of_expiration
             : null,
+        raw: payload
+      };
+    },
+
+    async createCardPayment(
+      payment: MercadoPagoCardPaymentRequest
+    ): Promise<MercadoPagoCardPaymentResponse> {
+      const payload = await request("/v1/payments", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-idempotency-key": payment.idempotencyKey
+        },
+        body: JSON.stringify({
+          transaction_amount: payment.amount,
+          token: payment.token,
+          description: payment.description,
+          installments: payment.installments,
+          payment_method_id: payment.paymentMethodId,
+          issuer_id: payment.issuerId,
+          external_reference: payment.externalReference,
+          notification_url: payment.notificationUrl,
+          processing_mode: payment.processingMode,
+          payment_method_option_id: payment.paymentMethodOptionId,
+          payer: {
+            email: payment.payer.email,
+            identification: payment.payer.identification
+          }
+        })
+      });
+
+      const record = payload as {
+        id?: string | number;
+        status?: string;
+        status_detail?: string;
+        payment_method_id?: string;
+        payment_type_id?: string;
+        installments?: number;
+        issuer_id?: string | number;
+        card?: {
+          last_four_digits?: string;
+        };
+      };
+
+      const providerId =
+        typeof record.id === "number" || typeof record.id === "string"
+          ? String(record.id)
+          : null;
+      if (!providerId) {
+        throw new Error("Mercado Pago create card payment response missing payment id.");
+      }
+
+      return {
+        id: providerId,
+        status: typeof record.status === "string" ? record.status : "pending",
+        statusDetail:
+          typeof record.status_detail === "string" ? record.status_detail : null,
+        paymentMethodId:
+          typeof record.payment_method_id === "string"
+            ? record.payment_method_id
+            : null,
+        paymentTypeId:
+          typeof record.payment_type_id === "string" ? record.payment_type_id : null,
+        installments:
+          typeof record.installments === "number" ? record.installments : null,
+        issuerId:
+          typeof record.issuer_id === "number" || typeof record.issuer_id === "string"
+            ? String(record.issuer_id)
+            : null,
+        lastFourDigits: record.card?.last_four_digits ?? null,
         raw: payload
       };
     },

@@ -21,6 +21,8 @@
     "smoke:artifacts": "node scripts/smoke/check-artifacts.mjs",
     "smoke:contracts": "node scripts/smoke/check-contracts.mjs",
     "smoke:e2e": "node scripts/smoke/run-e2e-api-worker.mjs",
+    "smoke:post-reboot": "bash scripts/ops/post-reboot-smoke.sh",
+    "smoke:post-reboot:e2e": "RUN_E2E=1 bash scripts/ops/post-reboot-smoke.sh",
     "smoke": "npm run smoke:artifacts && npm run smoke:contracts",
     "test:unit": "node scripts/tests/test-financial-calc.mjs && node scripts/tests/test-job-states.mjs && node scripts/tests/test-idempotency-keys.mjs && node scripts/tests/test-hold-capture-refund.mjs",
     "test:e2e:insufficient": "node scripts/tests/test-insufficient-balance.mjs",

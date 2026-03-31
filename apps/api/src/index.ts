@@ -91,7 +91,15 @@ const envSchema = z.object({
   MERCADO_PAGO_ACCESS_TOKEN: z.string().optional(),
   MERCADO_PAGO_API_BASE_URL: z.string().url().default("https://api.mercadopago.com"),
   MERCADO_PAGO_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(15000),
-  MERCADO_PAGO_WEBHOOK_URL: z.string().url().optional(),
+  MERCADO_PAGO_WEBHOOK_URL: z.preprocess(
+    (value) => {
+      if (typeof value === "string" && value.trim().length === 0) {
+        return undefined;
+      }
+      return value;
+    },
+    z.string().url().optional()
+  ),
   PAYMENT_DESCRIPTION_PREFIX: z.string().default("Voxora"),
   CORS_ALLOWED_ORIGINS: z.string().optional(),
   REQUEST_TIMEOUT_MS: z.coerce.number().int().min(5000).max(600000).default(60000)
@@ -110,6 +118,16 @@ const paymentWebhookSecret =
     ? env.PAYMENT_WEBHOOK_SECRET.trim()
     : null;
 const webhookSignatureToleranceMs = env.PAYMENT_WEBHOOK_SIGNATURE_TOLERANCE_SECONDS * 1000;
+
+if (
+  env.PAYMENT_PROVIDER_MODE === "mercado_pago" &&
+  !paymentWebhookSignatureSecret &&
+  !paymentWebhookSecret
+) {
+  console.warn(
+    "[voxora/api] Mercado Pago webhook auth is not configured. Set PAYMENT_WEBHOOK_SIGNATURE_SECRET or PAYMENT_WEBHOOK_SECRET before enabling automatic payment crediting."
+  );
+}
 const mercadoPagoAccessToken =
   env.MERCADO_PAGO_ACCESS_TOKEN && env.MERCADO_PAGO_ACCESS_TOKEN.trim().length > 0
     ? env.MERCADO_PAGO_ACCESS_TOKEN.trim()
@@ -257,6 +275,37 @@ const createPixPaymentBodySchema = z.object({
     )
 });
 
+const createCardPaymentBodySchema = z.object({
+  amount: z.coerce
+    .number()
+    .refine(
+      (value) => value >= env.PIX_MIN_AMOUNT && value <= env.PIX_MAX_AMOUNT,
+      `Amount must be between ${env.PIX_MIN_AMOUNT} and ${env.PIX_MAX_AMOUNT}.`
+    ),
+  token: z.string().min(10).max(400),
+  issuerId: z.string().trim().min(1).max(100).optional(),
+  paymentMethodId: z.string().trim().min(1).max(100),
+  paymentMethodOptionId: z.string().trim().min(1).max(120).optional(),
+  processingMode: z.string().trim().min(1).max(120).optional(),
+  installments: z.coerce.number().int().min(1).max(36),
+  payer: z.object({
+    email: z.string().trim().email().max(180),
+    identification: z
+      .object({
+        type: z.string().trim().min(1).max(40),
+        number: z.string().trim().min(3).max(40)
+      })
+      .optional()
+  }),
+  cardholderName: z.string().trim().min(2).max(160).optional(),
+  paymentTypeId: z.string().trim().min(1).max(80).optional(),
+  lastFourDigits: z
+    .string()
+    .trim()
+    .regex(/^\d{4}$/)
+    .optional()
+});
+
 const paymentWebhookDirectBodySchema = z.object({
   providerPaymentId: z.string().min(4).max(200),
   status: z.enum(PAYMENT_STATUSES),
@@ -364,9 +413,25 @@ type PublicTranscriptionJob = {
 type PublicPayment = {
   id: string;
   provider: "mercado_pago";
+  providerMode: "mock" | "mercado_pago" | null;
   providerPaymentId: string;
+  method: "pix" | "credit_card";
   amount: string;
   status: "pending" | "approved" | "rejected" | "expired";
+  statusDetail: string | null;
+  expiresAt: string | null;
+  pix: {
+    copyPasteCode: string | null;
+    qrCodeBase64: string | null;
+    ticketUrl: string | null;
+  } | null;
+  card: {
+    lastFourDigits: string | null;
+    paymentMethodId: string | null;
+    paymentTypeId: string | null;
+    cardholderName: string | null;
+    installments: number | null;
+  } | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -382,7 +447,9 @@ type UserAuthShape = {
 
 const app = Fastify({
   bodyLimit: env.MAX_UPLOAD_BYTES,
-  maxParamLength: 4096,
+  routerOptions: {
+    maxParamLength: 4096
+  },
   requestTimeout: env.REQUEST_TIMEOUT_MS,
   logger: {
     level: env.NODE_ENV === "production" ? "info" : "debug"
@@ -612,18 +679,134 @@ function serializePayment(payment: {
   providerPaymentId: string;
   amount: Prisma.Decimal;
   status: "pending" | "approved" | "rejected" | "expired";
+  rawPayload: Prisma.JsonValue | null;
   createdAt: Date;
   updatedAt: Date;
 }): PublicPayment {
+  const metadata = getPaymentMetadata(payment.rawPayload);
   return {
     id: payment.id,
     provider: payment.provider,
+    providerMode: getStringValue(getJsonObject(payment.rawPayload)?.providerMode) as
+      | "mock"
+      | "mercado_pago"
+      | null,
     providerPaymentId: payment.providerPaymentId,
+    method: metadata.method,
     amount: payment.amount.toString(),
     status: payment.status,
+    statusDetail: metadata.statusDetail,
+    expiresAt: metadata.expiresAt,
+    pix: metadata.method === "pix" ? metadata.pix : null,
+    card: metadata.method === "credit_card" ? metadata.card : null,
     createdAt: payment.createdAt.toISOString(),
     updatedAt: payment.updatedAt.toISOString()
   };
+}
+
+function getJsonObject(
+  value: Prisma.JsonValue | Prisma.NullableJsonNullValueInput | null | undefined
+) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as Record<string, unknown>;
+}
+
+function getStringValue(value: unknown) {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function getNumberValue(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function getPaymentMetadata(
+  rawPayload: Prisma.JsonValue | Prisma.NullableJsonNullValueInput | null | undefined
+) {
+  const raw = getJsonObject(rawPayload);
+  const providerPayload = getJsonObject(raw?.providerPayload as Prisma.JsonValue | undefined);
+  const methodCandidate =
+    getStringValue(raw?.method) ?? getStringValue(raw?.paymentMethod) ?? null;
+  const method =
+    methodCandidate === "credit_card" || methodCandidate === "pix"
+      ? methodCandidate
+      : raw?.copyPasteCode
+        ? "pix"
+        : "credit_card";
+  const expiresAt =
+    getStringValue(raw?.expiresAt) ??
+    getStringValue(providerPayload?.date_of_expiration) ??
+    null;
+  const statusDetail =
+    getStringValue(raw?.statusDetail) ??
+    getStringValue(providerPayload?.status_detail) ??
+    null;
+
+  return {
+    method,
+    expiresAt,
+    statusDetail,
+    pix:
+      method === "pix"
+        ? {
+            copyPasteCode: getStringValue(raw?.copyPasteCode),
+            qrCodeBase64: getStringValue(raw?.qrCodeBase64),
+            ticketUrl: getStringValue(raw?.ticketUrl)
+          }
+        : null,
+    card:
+      method === "credit_card"
+        ? {
+            lastFourDigits:
+              getStringValue(raw?.lastFourDigits) ??
+              getStringValue(getJsonObject(providerPayload?.card as Prisma.JsonValue)?.last_four_digits),
+            paymentMethodId:
+              getStringValue(raw?.paymentMethodId) ??
+              getStringValue(providerPayload?.payment_method_id),
+            paymentTypeId:
+              getStringValue(raw?.paymentTypeId) ??
+              getStringValue(providerPayload?.payment_type_id),
+            cardholderName: getStringValue(raw?.cardholderName),
+            installments:
+              getNumberValue(raw?.installments) ?? getNumberValue(providerPayload?.installments)
+          }
+        : null
+  } as const;
+}
+
+function isPaymentExpired(
+  payment: Pick<Prisma.PaymentGetPayload<object>, "status" | "rawPayload">
+) {
+  if (payment.status !== "pending") {
+    return false;
+  }
+
+  const metadata = getPaymentMetadata(payment.rawPayload);
+  if (metadata.method !== "pix" || !metadata.expiresAt) {
+    return false;
+  }
+
+  const expiresAtMs = Date.parse(metadata.expiresAt);
+  if (Number.isNaN(expiresAtMs)) {
+    return false;
+  }
+
+  return expiresAtMs <= Date.now();
+}
+
+async function expirePaymentIfNeeded(
+  payment: Prisma.PaymentGetPayload<object>
+): Promise<Prisma.PaymentGetPayload<object>> {
+  if (!isPaymentExpired(payment)) {
+    return payment;
+  }
+
+  return prisma.payment.update({
+    where: { id: payment.id },
+    data: { status: "expired" }
+  });
 }
 
 function getHeaderValue(headers: FastifyRequest["headers"], key: string) {
@@ -752,6 +935,13 @@ function verifyPaymentWebhookAuth(params: {
   request: FastifyRequest;
   providerPaymentId: string;
 }) {
+  if (!paymentWebhookSignatureSecret && !paymentWebhookSecret) {
+    return {
+      ok: false,
+      message: "Webhook authentication is not configured."
+    } as const;
+  }
+
   const signatureValidation = verifyMercadoPagoWebhookSignature(params);
   if (!signatureValidation.ok) {
     return signatureValidation;
@@ -847,6 +1037,7 @@ async function resolveWebhookPaymentStatus(params: {
   if (direct.success) {
     return {
       status: direct.data.status,
+      statusDetail: null,
       rawPayload: direct.data.rawPayload ?? params.body
     };
   }
@@ -857,6 +1048,9 @@ async function resolveWebhookPaymentStatus(params: {
     );
     return {
       status: mapMercadoPagoStatusToPaymentStatus(providerStatus.status),
+      statusDetail: getStringValue(
+        getJsonObject(providerStatus.raw as Prisma.JsonValue)?.status_detail
+      ),
       rawPayload: providerStatus.raw
     };
   }
@@ -864,9 +1058,37 @@ async function resolveWebhookPaymentStatus(params: {
   return null;
 }
 
+function mergePaymentRawPayload(
+  currentRawPayload: Prisma.JsonValue | Prisma.NullableJsonNullValueInput | null | undefined,
+  updates: {
+    providerPayload?: unknown;
+    statusDetail?: string | null;
+    status?: string | null;
+    approvedAt?: string | null;
+  }
+) {
+  const current = getJsonObject(currentRawPayload) ?? {};
+  return toPrismaJsonValue({
+    ...current,
+    providerPayload:
+      updates.providerPayload !== undefined
+        ? updates.providerPayload
+        : current.providerPayload ?? null,
+    statusDetail:
+      updates.statusDetail !== undefined ? updates.statusDetail : current.statusDetail ?? null,
+    status: updates.status !== undefined ? updates.status : current.status ?? null,
+    approvedAt:
+      updates.approvedAt !== undefined ? updates.approvedAt : current.approvedAt ?? null
+  });
+}
+
 async function approvePaymentAndCreditWallet(params: {
   paymentId: string;
-  rawPayload?: unknown;
+  rawPayload?: {
+    providerPayload?: unknown;
+    statusDetail?: string | null;
+    approvedAt?: string | null;
+  };
   idempotencyKey?: string;
 }) {
   return prisma.$transaction(async (tx) => {
@@ -881,7 +1103,12 @@ async function approvePaymentAndCreditWallet(params: {
       where: { id: payment.id },
       data: {
         status: "approved",
-        rawPayload: toPrismaJsonValue(params.rawPayload ?? payment.rawPayload)
+        rawPayload: mergePaymentRawPayload(payment.rawPayload, {
+          providerPayload: params.rawPayload?.providerPayload,
+          statusDetail: params.rawPayload?.statusDetail,
+          status: "approved",
+          approvedAt: params.rawPayload?.approvedAt ?? new Date().toISOString()
+        })
       }
     });
 
@@ -1320,11 +1547,14 @@ async function registerRoutes() {
         }),
         prisma.payment.count({ where })
       ]);
+      const normalizedPayments = await Promise.all(
+        payments.map((payment) => expirePaymentIfNeeded(payment))
+      );
 
       return {
         total,
         hasMore: query.offset + query.limit < total,
-        items: payments.map((payment) => serializePayment(payment))
+        items: normalizedPayments.map((payment) => serializePayment(payment))
       };
     }
   );
@@ -1403,8 +1633,15 @@ async function registerRoutes() {
           status: providerStatus,
           rawPayload: toPrismaJsonValue({
             providerMode: env.PAYMENT_PROVIDER_MODE,
+            method: "pix",
+            statusDetail:
+              getStringValue(
+                getJsonObject(providerRawPayload as Prisma.JsonValue)?.status_detail
+              ) ?? null,
             copyPasteCode,
             expiresAt: expiresAt.toISOString(),
+            qrCodeBase64,
+            ticketUrl,
             providerPayload: providerRawPayload
           })
         }
@@ -1414,7 +1651,6 @@ async function registerRoutes() {
         payment.status === "approved"
           ? (await approvePaymentAndCreditWallet({
               paymentId: payment.id,
-              rawPayload: toPrismaJsonValue(payment.rawPayload),
               idempotencyKey: `payment:${payment.id}:credit`
             }))?.payment ?? payment
           : payment;
@@ -1429,6 +1665,95 @@ async function registerRoutes() {
           ticketUrl
         }
       });
+    }
+  );
+
+  app.post(
+    "/v1/payments/card",
+    {
+      preHandler: [authenticate],
+      config: { rateLimit: { max: 10, timeWindow: "1 minute" } }
+    },
+    async (request, reply) => {
+      if (env.PAYMENT_PROVIDER_MODE !== "mercado_pago" || !mercadoPagoClient) {
+        return reply.code(405).send({
+          message:
+            "Card payments are only available when PAYMENT_PROVIDER_MODE=mercado_pago."
+        });
+      }
+
+      const body = createCardPaymentBodySchema.parse(request.body);
+      const user = await prisma.user.findUnique({
+        where: { id: request.user.sub },
+        select: { email: true }
+      });
+      if (!user) {
+        return reply.code(404).send({
+          message: "User not found."
+        });
+      }
+
+      const amount = toMoneyDecimal(body.amount);
+      const idempotencyKey = `card:create:${request.user.sub}:${Date.now()}:${randomUUID().slice(0, 8)}`;
+
+      try {
+        const created = await mercadoPagoClient.createCardPayment({
+          amount: body.amount,
+          token: body.token,
+          description: `${env.PAYMENT_DESCRIPTION_PREFIX} - Recarga com cartão`,
+          externalReference: `user:${request.user.sub}`,
+          idempotencyKey,
+          installments: body.installments,
+          paymentMethodId: body.paymentMethodId,
+          issuerId: body.issuerId,
+          notificationUrl: env.MERCADO_PAGO_WEBHOOK_URL,
+          processingMode: body.processingMode,
+          paymentMethodOptionId: body.paymentMethodOptionId,
+          payer: {
+            email: body.payer.email || user.email,
+            identification: body.payer.identification
+          }
+        });
+
+        const payment = await prisma.payment.create({
+          data: {
+            userId: request.user.sub,
+            provider: "mercado_pago",
+            providerPaymentId: created.id,
+            amount,
+            status: mapMercadoPagoStatusToPaymentStatus(created.status),
+            rawPayload: toPrismaJsonValue({
+              providerMode: env.PAYMENT_PROVIDER_MODE,
+              method: "credit_card",
+              statusDetail: created.statusDetail,
+              lastFourDigits: body.lastFourDigits ?? created.lastFourDigits,
+              cardholderName: body.cardholderName,
+              paymentMethodId: created.paymentMethodId ?? body.paymentMethodId,
+              paymentTypeId: body.paymentTypeId ?? created.paymentTypeId,
+              installments: created.installments ?? body.installments,
+              issuerId: created.issuerId ?? body.issuerId,
+              providerPayload: created.raw
+            })
+          }
+        });
+
+        const finalizedPayment =
+          payment.status === "approved"
+            ? (await approvePaymentAndCreditWallet({
+                paymentId: payment.id,
+                idempotencyKey: `payment:${payment.id}:credit`
+              }))?.payment ?? payment
+            : payment;
+
+        return reply.code(201).send({
+          payment: serializePayment(finalizedPayment)
+        });
+      } catch (error) {
+        request.log.error(error, "Could not create card payment in Mercado Pago.");
+        return reply.code(503).send({
+          message: "Could not create card payment with Mercado Pago."
+        });
+      }
     }
   );
 
@@ -1468,8 +1793,10 @@ async function registerRoutes() {
       const approved = await approvePaymentAndCreditWallet({
         paymentId: payment.id,
         rawPayload: {
-          event: "mock_manual_confirmation",
-          confirmedAt: new Date().toISOString()
+          providerPayload: {
+            event: "mock_manual_confirmation",
+            confirmedAt: new Date().toISOString()
+          }
         },
         idempotencyKey: `payment:${payment.id}:credit`
       });
@@ -1536,7 +1863,10 @@ async function registerRoutes() {
     if (resolved.status === "approved") {
       const approved = await approvePaymentAndCreditWallet({
         paymentId: payment.id,
-        rawPayload: toPrismaJsonValue(resolved.rawPayload),
+        rawPayload: {
+          providerPayload: resolved.rawPayload,
+          statusDetail: resolved.statusDetail
+        },
         idempotencyKey: `payment:${payment.id}:credit`
       });
       if (!approved) {
@@ -1566,7 +1896,11 @@ async function registerRoutes() {
       where: { id: payment.id },
       data: {
         status: resolved.status,
-        rawPayload: toPrismaJsonValue(resolved.rawPayload)
+        rawPayload: mergePaymentRawPayload(payment.rawPayload, {
+          providerPayload: resolved.rawPayload,
+          statusDetail: resolved.statusDetail,
+          status: resolved.status
+        })
       }
     });
 

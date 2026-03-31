@@ -21,6 +21,7 @@
 | `REQUEST_TIMEOUT_MS` | API | `60000` | Timeout de request em ms |
 | `PAYMENT_PROVIDER_MODE` | API | `mock` | Usar `mercado_pago` em produção |
 | `MERCADO_PAGO_ACCESS_TOKEN` | API | — | Token de produção do Mercado Pago |
+| `VITE_MERCADO_PAGO_PUBLIC_KEY` | Web | — | Public Key do Mercado Pago usada pelo Brick de cartão |
 | `PAYMENT_WEBHOOK_SIGNATURE_SECRET` | API | — | Secret para validar assinatura do webhook MP |
 | `PAYMENT_WEBHOOK_SECRET` | API | — | Secret alternativo para webhook (fallback) |
 | `MERCADO_PAGO_WEBHOOK_URL` | API | — | URL pública do webhook para notificações |

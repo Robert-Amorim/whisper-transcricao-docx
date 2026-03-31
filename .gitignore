@@ -35,6 +35,7 @@ Thumbs.db
 !.env.example
 
 # OCI credentials
+.secrets/
 apps/api/.secrets/
 apps/api/.secret
 apps/api/.secret.*

@@ -1,9 +1,15 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { promisify } from "node:util";
 
 const apiBaseUrl = process.env.API_BASE_URL ?? "http://127.0.0.1:3333";
 const pollTimeoutMs = Number.parseInt(process.env.E2E_POLL_TIMEOUT_MS ?? "90000", 10);
 const pollIntervalMs = Number.parseInt(process.env.E2E_POLL_INTERVAL_MS ?? "2000", 10);
+const execFileAsync = promisify(execFile);
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -118,11 +124,44 @@ async function confirmPixPayment(accessToken, paymentId) {
   return payload;
 }
 
-async function presignUpload(accessToken) {
+async function createValidSmokeMedia() {
+  const workspaceDir = await mkdtemp(join(tmpdir(), "voxora-smoke-"));
+  const fileName = "smoke-input.wav";
+  const filePath = join(workspaceDir, fileName);
+
+  try {
+    await execFileAsync("ffmpeg", [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "anullsrc=r=16000:cl=mono",
+      "-t",
+      "1",
+      "-c:a",
+      "pcm_s16le",
+      filePath,
+      "-y"
+    ]);
+
+    const buffer = await readFile(filePath);
+    return {
+      fileName,
+      contentType: "audio/wav",
+      buffer
+    };
+  } finally {
+    await rm(workspaceDir, { recursive: true, force: true });
+  }
+}
+
+async function presignUpload(accessToken, mediaFile) {
   const body = {
-    fileName: "smoke-input.mp3",
-    contentType: "audio/mpeg",
-    sizeBytes: 256
+    fileName: mediaFile.fileName,
+    contentType: mediaFile.contentType,
+    sizeBytes: mediaFile.buffer.byteLength
   };
 
   const { response, payload } = await requestJson("/v1/uploads/presign", {
@@ -141,18 +180,14 @@ async function presignUpload(accessToken) {
   return payload;
 }
 
-async function uploadMedia(presignPayload) {
-  const audioBytes = new Uint8Array(256);
-  for (let i = 0; i < audioBytes.length; i += 1) {
-    audioBytes[i] = i % 251;
-  }
-
+async function uploadMedia(presignPayload, mediaFile) {
   const uploadResponse = await fetch(presignPayload.uploadUrl, {
     method: "PUT",
     headers: {
-      "content-type": presignPayload.requiredHeaders?.["content-type"] ?? "audio/mpeg"
+      "content-type":
+        presignPayload.requiredHeaders?.["content-type"] ?? mediaFile.contentType
     },
-    body: audioBytes
+    body: mediaFile.buffer
   });
 
   if (!uploadResponse.ok) {
@@ -263,8 +298,9 @@ async function main() {
     );
   }
 
-  const presignPayload = await presignUpload(accessToken);
-  await uploadMedia(presignPayload);
+  const mediaFile = await createValidSmokeMedia();
+  const presignPayload = await presignUpload(accessToken, mediaFile);
+  await uploadMedia(presignPayload, mediaFile);
   const jobId = await createTranscription(accessToken, presignPayload.objectKey);
   await waitForCompletion(accessToken, jobId);
   await verifyDownloads(accessToken, jobId);

@@ -9,6 +9,7 @@ import OptimizationTip from "../components/dashboard/OptimizationTip";
 import {
   ApiError,
   confirmPixPayment,
+  createCardPayment,
   createPixPayment,
   getErrorMessage,
   getMe,
@@ -32,6 +33,7 @@ import { useNavigate } from "react-router-dom";
 
 type LoadState = "loading" | "ready" | "error";
 type FeedbackTone = "neutral" | "success" | "error";
+type TopUpMethod = "pix" | "credit_card";
 
 export default function DashboardPage() {
   const navigate = useNavigate();
@@ -48,7 +50,9 @@ export default function DashboardPage() {
   const [paymentFeedbackMessage, setPaymentFeedbackMessage] = useState("");
   const [paymentFeedbackTone, setPaymentFeedbackTone] = useState<FeedbackTone>("neutral");
   const [activePixPayment, setActivePixPayment] = useState<PixPaymentResponse | null>(null);
+  const [selectedTopUpMethod, setSelectedTopUpMethod] = useState<TopUpMethod>("pix");
   const [isCreatingPayment, setIsCreatingPayment] = useState(false);
+  const [isCreatingCardPayment, setIsCreatingCardPayment] = useState(false);
   const [isConfirmingMockPayment, setIsConfirmingMockPayment] = useState(false);
   const [isRefreshingData, setIsRefreshingData] = useState(false);
   const [jobsFeedbackMessage, setJobsFeedbackMessage] = useState("");
@@ -70,6 +74,31 @@ export default function DashboardPage() {
     () => jobs.some((job) => PROCESSING_STATUSES.includes(job.status)),
     [jobs]
   );
+  const hasPendingPayments = useMemo(
+    () => payments.some((payment) => payment.status === "pending"),
+    [payments]
+  );
+
+  const syncPaymentsState = useCallback((items: PaymentSummary[]) => {
+    setPayments(items);
+    const latestActivePix = items.find(
+      (payment) => payment.method === "pix" && payment.status === "pending" && payment.pix
+    );
+    setActivePixPayment(
+      latestActivePix
+        ? {
+            payment: latestActivePix,
+            pix: {
+              providerMode: latestActivePix.providerMode ?? "mercado_pago",
+              copyPasteCode: latestActivePix.pix?.copyPasteCode ?? "",
+              expiresAt: latestActivePix.expiresAt ?? latestActivePix.createdAt,
+              qrCodeBase64: latestActivePix.pix?.qrCodeBase64 ?? null,
+              ticketUrl: latestActivePix.pix?.ticketUrl ?? null
+            }
+          }
+        : null
+    );
+  }, []);
 
   const visibleJobs = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
@@ -192,7 +221,7 @@ export default function DashboardPage() {
         setLedger(currentLedger.items);
         setLedgerTotal(currentLedger.total ?? 0);
         setLedgerHasMore(currentLedger.hasMore ?? false);
-        setPayments(currentPayments.items);
+        syncPaymentsState(currentPayments.items);
         setLoadState("ready");
 
         const welcomeCredit = window.sessionStorage.getItem("voxora_welcome_credit");
@@ -216,8 +245,46 @@ export default function DashboardPage() {
         setIsRefreshingData(false);
       }
     },
-    [navigate, jobsPage, ledgerPage]
+    [navigate, jobsPage, ledgerPage, setPaymentFeedback, syncPaymentsState]
   );
+
+  const refreshPaymentStatus = useCallback(async () => {
+    try {
+      const currentPayments = await listPayments({ limit: 6 });
+      const previousPendingIds = new Set(
+        payments.filter((payment) => payment.status === "pending").map((payment) => payment.id)
+      );
+      syncPaymentsState(currentPayments.items);
+
+      const resolvedPayments = currentPayments.items.filter(
+        (payment) => previousPendingIds.has(payment.id) && payment.status !== "pending"
+      );
+      if (resolvedPayments.length === 0) {
+        return;
+      }
+
+      const needsWalletRefresh = resolvedPayments.some(
+        (payment) => payment.status === "approved"
+      );
+      if (!needsWalletRefresh) {
+        return;
+      }
+
+      const [currentWallet, currentLedger] = await Promise.all([
+        getWallet(),
+        listWalletLedger({ limit: LEDGER_PAGE_SIZE, offset: ledgerPage * LEDGER_PAGE_SIZE })
+      ]);
+      setWallet(currentWallet);
+      setLedger(currentLedger.items);
+      setLedgerTotal(currentLedger.total ?? 0);
+      setLedgerHasMore(currentLedger.hasMore ?? false);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        clearSessionTokens();
+        navigate("/login", { replace: true });
+      }
+    }
+  }, [LEDGER_PAGE_SIZE, ledgerPage, navigate, payments, syncPaymentsState]);
 
   const handleJobsPageChange = useCallback((page: number) => {
     setJobsPage(page);
@@ -255,6 +322,72 @@ export default function DashboardPage() {
       setIsCreatingPayment(false);
     }
   }, [loadDashboard, navigate, setPaymentFeedback, topUpAmountInput]);
+
+  const handleCreateCardPayment = useCallback(
+    async (payload: {
+      amount: number;
+      token: string;
+      issuerId?: string;
+      paymentMethodId: string;
+      paymentMethodOptionId?: string;
+      processingMode?: string;
+      installments: number;
+      payer: {
+        email: string;
+        identification?: {
+          type: string;
+          number: string;
+        };
+      };
+      cardholderName?: string;
+      paymentTypeId?: string;
+      lastFourDigits?: string;
+    }) => {
+      setIsCreatingCardPayment(true);
+      setPaymentFeedback("neutral", "Processando pagamento com cartao...");
+
+      try {
+        const created = await createCardPayment(payload);
+        const status = created.payment.status;
+        if (status === "approved") {
+          setPaymentFeedback(
+            "success",
+            "Pagamento aprovado. Os creditos ja foram adicionados na sua carteira."
+          );
+        } else if (status === "pending") {
+          setPaymentFeedback(
+            "neutral",
+            "Pagamento enviado. Vamos acompanhar a confirmacao automaticamente."
+          );
+        } else if (status === "rejected") {
+          setPaymentFeedback(
+            "error",
+            created.payment.statusDetail ||
+              "O pagamento com cartao foi recusado. Revise os dados e tente novamente."
+          );
+        } else {
+          setPaymentFeedback(
+            "error",
+            "O pagamento com cartao expirou antes da confirmacao. Tente novamente."
+          );
+        }
+        await loadDashboard({ isRefresh: true });
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 401) {
+          clearSessionTokens();
+          navigate("/login", { replace: true });
+          return;
+        }
+        setPaymentFeedback(
+          "error",
+          getErrorMessage(error, "Falha ao processar pagamento com cartao.")
+        );
+      } finally {
+        setIsCreatingCardPayment(false);
+      }
+    },
+    [loadDashboard, navigate, setPaymentFeedback]
+  );
 
   const handleConfirmMockPayment = useCallback(async () => {
     const paymentId = activePixPayment?.payment.id;
@@ -337,6 +470,18 @@ export default function DashboardPage() {
     return () => clearInterval(timer);
   }, [hasProcessingJobs, loadDashboard]);
 
+  useEffect(() => {
+    if (!hasPendingPayments || selectedTopUpMethod === "credit_card") {
+      return;
+    }
+
+    const timer = setInterval(() => {
+      void refreshPaymentStatus();
+    }, 5000);
+
+    return () => clearInterval(timer);
+  }, [hasPendingPayments, refreshPaymentStatus, selectedTopUpMethod]);
+
   return (
     <main className="font-display text-slate-900 antialiased dark:text-slate-100">
       <div className="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark">
@@ -383,7 +528,10 @@ export default function DashboardPage() {
                   amountInput={topUpAmountInput}
                   onAmountInputChange={setTopUpAmountInput}
                   onCreatePixPayment={handleCreatePixPayment}
+                  onCreateCardPayment={handleCreateCardPayment}
+                  payerEmail={user?.email ?? null}
                   isCreatingPayment={isCreatingPayment}
+                  isCreatingCardPayment={isCreatingCardPayment}
                   isRefreshingData={isRefreshingData}
                   activePix={activePixPayment}
                   onConfirmMockPayment={handleConfirmMockPayment}
@@ -391,6 +539,7 @@ export default function DashboardPage() {
                   payments={payments}
                   feedbackMessage={paymentFeedbackMessage}
                   feedbackTone={paymentFeedbackTone}
+                  onSelectedMethodChange={setSelectedTopUpMethod}
                 />
                 <OptimizationTip />
               </div>

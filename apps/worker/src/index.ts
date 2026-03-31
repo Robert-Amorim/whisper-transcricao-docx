@@ -206,6 +206,32 @@ function toErrorMessage(error: unknown) {
   return "Unknown worker error.";
 }
 
+function truncateForDatabase(value: string, maxLength = 180) {
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  return `${value.slice(0, Math.max(0, maxLength - 3))}...`;
+}
+
+function normalizeProviderLanguage(language?: string) {
+  if (!language) {
+    return undefined;
+  }
+
+  const normalized = language.trim().replace(/_/g, "-").toLowerCase();
+  if (normalized.length === 0) {
+    return undefined;
+  }
+
+  const [baseLanguage] = normalized.split("-", 1);
+  if (!baseLanguage || !/^[a-z]{2}$/.test(baseLanguage)) {
+    return undefined;
+  }
+
+  return baseLanguage;
+}
+
 class InsufficientCreditsError extends Error {
   constructor(message: string) {
     super(message);
@@ -537,6 +563,7 @@ async function transcribeOpenAiWithChunking(params: {
   durationSeconds: number;
   requestId: string;
 }) {
+  const providerLanguage = normalizeProviderLanguage(params.language);
   const fileName = getObjectFileName(params.sourceObjectKey);
   const extension = extname(fileName) || ".bin";
   const bytesPerSecond = Math.max(1, params.audioBuffer.byteLength / params.durationSeconds);
@@ -595,7 +622,7 @@ async function transcribeOpenAiWithChunking(params: {
         baseUrl: env.OPENAI_BASE_URL,
         model: env.OPENAI_WHISPER_MODEL,
         fileName: `chunk-${chunkWindow.index}.mp3`,
-        language: params.language,
+        language: providerLanguage,
         audioBuffer: chunkBuffer,
         timeoutMs: env.OPENAI_TIMEOUT_MS
       });
@@ -1024,6 +1051,7 @@ const worker = new Worker<TranscriptionJobData>(
           durationSeconds = chunked.durationSeconds ?? durationSeconds;
           segments = chunked.segments;
         } else {
+          const providerLanguage = normalizeProviderLanguage(jobEntity.language);
           const paddedBuffer = await padAudioBufferWithSilence(
             audioBuffer,
             getObjectFileName(jobEntity.sourceObjectKey),
@@ -1034,7 +1062,7 @@ const worker = new Worker<TranscriptionJobData>(
             baseUrl: env.OPENAI_BASE_URL,
             model: env.OPENAI_WHISPER_MODEL,
             fileName: getObjectFileName(jobEntity.sourceObjectKey),
-            language: jobEntity.language,
+            language: providerLanguage,
             audioBuffer: paddedBuffer,
             timeoutMs: env.OPENAI_TIMEOUT_MS
           });
@@ -1227,7 +1255,7 @@ const worker = new Worker<TranscriptionJobData>(
         data: {
           status: failedStatus,
           errorCode,
-          errorMessage: message
+          errorMessage: truncateForDatabase(message)
         }
       });
 

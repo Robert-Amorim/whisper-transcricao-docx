@@ -93,6 +93,31 @@ Plano versionado em:
 
 - `docs/release/ROLLBACK_PLAN.md`
 
+## Deploy Multiapp (OCI LB)
+
+Padrao operacional para varias aplicacoes no mesmo OCI Load Balancer:
+
+- `docs/infra/OCI_MULTIAPP_LB_RUNBOOK.md`
+
+Resumo da estrategia de certificados:
+
+- curto prazo: SAN multi-host compartilhado no listener HTTPS;
+- medio prazo: wildcard duplo para `*.integraretech.com.br` e `*.agora7app.integraretech.com.br`;
+- evitar excluir certificados antigos antes de validar o novo em producao.
+
+Utilitarios locais:
+
+- `scripts/ops/render-nginx-lb-app.sh`
+- `scripts/ops/export-oci-lb-cert.sh`
+
+Checklist operacional:
+
+- `docs/infra/REBOOT_CHECKLIST.md`
+- `docs/infra/REDIS_UPGRADE_RUNBOOK.md`
+- `docs/infra/MERCADO_PAGO_SANDBOX_WEBHOOK.md`
+- `npm run smoke:post-reboot`
+- `npm run smoke:post-reboot:e2e`
+
 ## Prisma (API)
 
 ```powershell

@@ -105,9 +105,25 @@ export type UploadPresignResponse = {
 export type PaymentSummary = {
   id: string;
   provider: "mercado_pago";
+  providerMode: "mock" | "mercado_pago" | null;
   providerPaymentId: string;
+  method: "pix" | "credit_card";
   amount: string;
   status: PaymentStatus;
+  statusDetail: string | null;
+  expiresAt: string | null;
+  pix: {
+    copyPasteCode: string | null;
+    qrCodeBase64: string | null;
+    ticketUrl: string | null;
+  } | null;
+  card: {
+    lastFourDigits: string | null;
+    paymentMethodId: string | null;
+    paymentTypeId: string | null;
+    cardholderName: string | null;
+    installments: number | null;
+  } | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -121,4 +137,8 @@ export type PixPaymentResponse = {
     qrCodeBase64?: string | null;
     ticketUrl?: string | null;
   };
+};
+
+export type CardPaymentResponse = {
+  payment: PaymentSummary;
 };

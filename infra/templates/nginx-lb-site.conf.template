@@ -1,0 +1,17 @@
+map $http_x_forwarded_proto $__FORWARDED_PROTO_VAR__ {
+    default $http_x_forwarded_proto;
+    "" $scheme;
+}
+
+upstream __UPSTREAM_NAME__ {
+    server __UPSTREAM_SERVER__;
+    keepalive 16;
+}
+
+server {
+    listen 80;
+    server_name __SERVER_NAME__;
+
+    # TLS termina no OCI Load Balancer.
+    include __LOCATIONS_SNIPPET__;
+}

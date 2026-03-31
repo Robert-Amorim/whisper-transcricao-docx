@@ -1,6 +1,7 @@
 import { clearSessionTokens, getSessionTokens, setSessionTokens } from "./session";
 import type {
   AuthResponse,
+  CardPaymentResponse,
   JobStatus,
   OutputFormat,
   PaymentStatus,
@@ -17,7 +18,8 @@ import type {
 } from "./types";
 
 const API_BASE_URL = (
-  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3333"
+  import.meta.env.VITE_API_BASE_URL ??
+  (import.meta.env.DEV ? "http://localhost:3333" : window.location.origin)
 ).replace(/\/+$/, "");
 
 type RequestOptions = {
@@ -249,6 +251,32 @@ export async function listPayments(params?: { limit?: number; offset?: number; s
 
 export async function createPixPayment(payload: { amount: number }) {
   return requestJson<PixPaymentResponse>("/v1/payments/pix", {
+    method: "POST",
+    body: payload,
+    auth: true
+  });
+}
+
+export async function createCardPayment(payload: {
+  amount: number;
+  token: string;
+  issuerId?: string;
+  paymentMethodId: string;
+  paymentMethodOptionId?: string;
+  processingMode?: string;
+  installments: number;
+  payer: {
+    email: string;
+    identification?: {
+      type: string;
+      number: string;
+    };
+  };
+  cardholderName?: string;
+  paymentTypeId?: string;
+  lastFourDigits?: string;
+}) {
+  return requestJson<CardPaymentResponse>("/v1/payments/card", {
     method: "POST",
     body: payload,
     auth: true
