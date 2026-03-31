@@ -295,34 +295,71 @@ async function sliceAudioChunk(params: {
   targetFilePath: string;
   startSec: number;
   durationSec: number;
+  padSilenceSec?: number;
 }) {
-  await execFileAsync(
-    "ffmpeg",
-    [
-      "-v",
-      "error",
-      "-ss",
-      params.startSec.toFixed(3),
-      "-t",
-      params.durationSec.toFixed(3),
-      "-i",
-      params.sourceFilePath,
-      "-vn",
-      "-ac",
-      "1",
-      "-ar",
-      "16000",
-      "-acodec",
-      "libmp3lame",
-      "-f",
-      "mp3",
-      "-y",
-      params.targetFilePath
-    ],
-    {
-      windowsHide: true
-    }
-  );
+  const ffmpegArgs = [
+    "-v",
+    "error",
+    "-ss",
+    params.startSec.toFixed(3),
+    "-t",
+    params.durationSec.toFixed(3),
+    "-i",
+    params.sourceFilePath,
+    "-vn",
+    "-ac",
+    "1",
+    "-ar",
+    "16000"
+  ];
+
+  if (params.padSilenceSec && params.padSilenceSec > 0) {
+    ffmpegArgs.push("-af", `apad=pad_dur=${params.padSilenceSec.toFixed(3)}`);
+  }
+
+  ffmpegArgs.push("-acodec", "libmp3lame", "-f", "mp3", "-y", params.targetFilePath);
+
+  await execFileAsync("ffmpeg", ffmpegArgs, { windowsHide: true });
+}
+
+async function padAudioBufferWithSilence(
+  audioBuffer: Buffer,
+  fileName: string,
+  padSilenceSec: number
+): Promise<Buffer> {
+  const workspaceDir = await mkdtemp(join(tmpdir(), "voxora-pad-"));
+  const extension = extname(fileName) || ".bin";
+  const sourceFilePath = join(workspaceDir, `source${extension}`);
+  const paddedFilePath = join(workspaceDir, "padded.mp3");
+  try {
+    await writeFile(sourceFilePath, audioBuffer);
+    await execFileAsync(
+      "ffmpeg",
+      [
+        "-v",
+        "error",
+        "-i",
+        sourceFilePath,
+        "-af",
+        `apad=pad_dur=${padSilenceSec.toFixed(3)}`,
+        "-vn",
+        "-ac",
+        "1",
+        "-ar",
+        "16000",
+        "-acodec",
+        "libmp3lame",
+        "-f",
+        "mp3",
+        "-y",
+        paddedFilePath
+      ],
+      { windowsHide: true }
+    );
+    return await readFile(paddedFilePath);
+  } finally {
+    await rm(workspaceDir, { recursive: true, force: true }).catch(() => undefined);
+  }
 }
 
 function getHoldIdempotencyKey(jobId: string) {
@@ -537,11 +574,13 @@ async function transcribeOpenAiWithChunking(params: {
     for (const chunkWindow of chunkWindows) {
       const chunkDuration = Math.max(0.5, chunkWindow.endSec - chunkWindow.startSec);
       const chunkFilePath = join(workspaceDir, `chunk-${chunkWindow.index}.mp3`);
+      const isLastChunk = chunkWindow.endSec >= params.durationSeconds;
       await sliceAudioChunk({
         sourceFilePath,
         targetFilePath: chunkFilePath,
         startSec: chunkWindow.startSec,
-        durationSec: chunkDuration
+        durationSec: chunkDuration,
+        padSilenceSec: isLastChunk ? 0.5 : undefined
       });
 
       const chunkBuffer = await readFile(chunkFilePath);
@@ -985,13 +1024,18 @@ const worker = new Worker<TranscriptionJobData>(
           durationSeconds = chunked.durationSeconds ?? durationSeconds;
           segments = chunked.segments;
         } else {
+          const paddedBuffer = await padAudioBufferWithSilence(
+            audioBuffer,
+            getObjectFileName(jobEntity.sourceObjectKey),
+            0.5
+          );
           const transcription = await transcribeWithOpenAi({
             apiKey: getOpenAiApiKey(),
             baseUrl: env.OPENAI_BASE_URL,
             model: env.OPENAI_WHISPER_MODEL,
             fileName: getObjectFileName(jobEntity.sourceObjectKey),
             language: jobEntity.language,
-            audioBuffer,
+            audioBuffer: paddedBuffer,
             timeoutMs: env.OPENAI_TIMEOUT_MS
           });
           transcriptionText = transcription.text.trim();
