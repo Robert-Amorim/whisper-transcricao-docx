@@ -1,39 +1,33 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import CreditManagementPanel from "../components/dashboard/CreditManagementPanel";
+import { useNavigate } from "react-router-dom";
 import DashboardSidebar from "../components/dashboard/DashboardSidebar";
 import DashboardStatsGrid from "../components/dashboard/DashboardStatsGrid";
 import DashboardTopbar from "../components/dashboard/DashboardTopbar";
 import JobsTable from "../components/dashboard/JobsTable";
 import LedgerPanel from "../components/dashboard/LedgerPanel";
-import OptimizationTip from "../components/dashboard/OptimizationTip";
 import {
   ApiError,
-  confirmPixPayment,
-  createCardPayment,
-  createPixPayment,
   getErrorMessage,
   getMe,
-  listPayments,
-  reprocessTranscription,
   getWallet,
   listTranscriptions,
-  listWalletLedger
+  listWalletLedger,
+  reprocessTranscription
 } from "../lib/api";
 import { clearSessionTokens, getSessionTokens } from "../lib/session";
 import { PROCESSING_STATUSES } from "../lib/transcriptions";
-import {
-  type PaymentSummary,
-  type PixPaymentResponse,
-  type PublicUser,
-  type TranscriptionJob,
-  type WalletLedgerEntry,
-  type WalletSummary
+import type {
+  PublicUser,
+  TranscriptionJob,
+  WalletLedgerEntry,
+  WalletSummary
 } from "../lib/types";
-import { useNavigate } from "react-router-dom";
 
 type LoadState = "loading" | "ready" | "error";
 type FeedbackTone = "neutral" | "success" | "error";
-type TopUpMethod = "pix" | "credit_card";
+
+const JOBS_PAGE_SIZE = 20;
+const LEDGER_PAGE_SIZE = 8;
 
 export default function DashboardPage() {
   const navigate = useNavigate();
@@ -44,25 +38,12 @@ export default function DashboardPage() {
   const [wallet, setWallet] = useState<WalletSummary | null>(null);
   const [ledger, setLedger] = useState<WalletLedgerEntry[]>([]);
   const [jobs, setJobs] = useState<TranscriptionJob[]>([]);
-  const [payments, setPayments] = useState<PaymentSummary[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [topUpAmountInput, setTopUpAmountInput] = useState("20");
-  const [paymentFeedbackMessage, setPaymentFeedbackMessage] = useState("");
-  const [paymentFeedbackTone, setPaymentFeedbackTone] = useState<FeedbackTone>("neutral");
-  const [activePixPayment, setActivePixPayment] = useState<PixPaymentResponse | null>(null);
-  const [selectedTopUpMethod, setSelectedTopUpMethod] = useState<TopUpMethod>("pix");
-  const [isCreatingPayment, setIsCreatingPayment] = useState(false);
-  const [isCreatingCardPayment, setIsCreatingCardPayment] = useState(false);
-  const [isConfirmingMockPayment, setIsConfirmingMockPayment] = useState(false);
-  const [isRefreshingData, setIsRefreshingData] = useState(false);
   const [jobsFeedbackMessage, setJobsFeedbackMessage] = useState("");
   const [jobsFeedbackTone, setJobsFeedbackTone] = useState<FeedbackTone>("neutral");
   const [retryingJobIds, setRetryingJobIds] = useState<string[]>([]);
-  const paymentFeedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const jobsFeedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const JOBS_PAGE_SIZE = 20;
-  const LEDGER_PAGE_SIZE = 8;
   const [jobsPage, setJobsPage] = useState(0);
   const [jobsTotal, setJobsTotal] = useState(0);
   const [jobsHasMore, setJobsHasMore] = useState(false);
@@ -74,60 +55,23 @@ export default function DashboardPage() {
     () => jobs.some((job) => PROCESSING_STATUSES.includes(job.status)),
     [jobs]
   );
-  const hasPendingPayments = useMemo(
-    () => payments.some((payment) => payment.status === "pending"),
-    [payments]
-  );
-
-  const syncPaymentsState = useCallback((items: PaymentSummary[]) => {
-    setPayments(items);
-    const latestActivePix = items.find(
-      (payment) => payment.method === "pix" && payment.status === "pending" && payment.pix
-    );
-    setActivePixPayment(
-      latestActivePix
-        ? {
-            payment: latestActivePix,
-            pix: {
-              providerMode: latestActivePix.providerMode ?? "mercado_pago",
-              copyPasteCode: latestActivePix.pix?.copyPasteCode ?? "",
-              expiresAt: latestActivePix.expiresAt ?? latestActivePix.createdAt,
-              qrCodeBase64: latestActivePix.pix?.qrCodeBase64 ?? null,
-              ticketUrl: latestActivePix.pix?.ticketUrl ?? null
-            }
-          }
-        : null
-    );
-  }, []);
 
   const visibleJobs = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLowerCase();
-    if (!normalizedSearch) {
-      return jobs;
-    }
-
+    const normalized = searchTerm.trim().toLowerCase();
+    if (!normalized) return jobs;
     return jobs.filter((job) => {
       const source = job.sourceObjectKey.toLowerCase();
-      const id = job.id.toLowerCase();
       const language = job.language.toLowerCase();
-      return (
-        source.includes(normalizedSearch) ||
-        id.includes(normalizedSearch) ||
-        language.includes(normalizedSearch)
-      );
+      return source.includes(normalized) || language.includes(normalized);
     });
   }, [jobs, searchTerm]);
 
   const walletUsagePercent = useMemo(() => {
-    if (!wallet) {
-      return 0;
-    }
+    if (!wallet) return 0;
     const available = Number(wallet.availableBalance);
     const held = Number(wallet.heldBalance);
     const total = available + held;
-    if (!Number.isFinite(total) || total <= 0) {
-      return 0;
-    }
+    if (!Number.isFinite(total) || total <= 0) return 0;
     return Math.max(0, Math.min(100, Math.round((available / total) * 100)));
   }, [wallet]);
 
@@ -137,15 +81,9 @@ export default function DashboardPage() {
     const m = today.getMonth();
     const d = today.getDate();
     return jobs.reduce((acc, job) => {
-      if (job.durationSeconds === null) {
-        return acc;
-      }
+      if (job.durationSeconds === null) return acc;
       const createdAt = new Date(job.createdAt);
-      if (
-        createdAt.getFullYear() === y &&
-        createdAt.getMonth() === m &&
-        createdAt.getDate() === d
-      ) {
+      if (createdAt.getFullYear() === y && createdAt.getMonth() === m && createdAt.getDate() === d) {
         return acc + Number(job.durationSeconds);
       }
       return acc;
@@ -154,22 +92,11 @@ export default function DashboardPage() {
 
   const latestCreditEntry = useMemo(() => {
     const credits = ledger.filter((entry) => entry.type === "credit");
-    if (credits.length === 0) {
-      return null;
-    }
+    if (credits.length === 0) return null;
     return [...credits].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     )[0];
   }, [ledger]);
-
-  const setPaymentFeedback = useCallback((tone: FeedbackTone, message: string) => {
-    if (paymentFeedbackTimer.current) clearTimeout(paymentFeedbackTimer.current);
-    setPaymentFeedbackTone(tone);
-    setPaymentFeedbackMessage(message);
-    if (tone !== "neutral") {
-      paymentFeedbackTimer.current = setTimeout(() => setPaymentFeedbackMessage(""), 6000);
-    }
-  }, []);
 
   const setJobsFeedback = useCallback((tone: FeedbackTone, message: string) => {
     if (jobsFeedbackTimer.current) clearTimeout(jobsFeedbackTimer.current);
@@ -180,37 +107,20 @@ export default function DashboardPage() {
     }
   }, []);
 
-  const focusCreditsPanel = useCallback(() => {
-    const target = document.getElementById("creditos");
-    if (!target) {
-      return;
-    }
-    target.scrollIntoView({
-      behavior: "smooth",
-      block: "start"
-    });
-  }, []);
-
   const loadDashboard = useCallback(
     async (options?: { isRefresh?: boolean; jobsPageOverride?: number; ledgerPageOverride?: number }) => {
-      if (!options?.isRefresh) {
-        setLoadState("loading");
-      } else {
-        setIsRefreshingData(true);
-      }
+      if (!options?.isRefresh) setLoadState("loading");
       setLoadError("");
 
       const currentJobsPage = options?.jobsPageOverride ?? jobsPage;
       const currentLedgerPage = options?.ledgerPageOverride ?? ledgerPage;
 
       try {
-        const [currentUser, currentWallet, currentJobs, currentLedger, currentPayments] =
-          await Promise.all([
+        const [currentUser, currentWallet, currentJobs, currentLedger] = await Promise.all([
           getMe(),
           getWallet(),
           listTranscriptions({ limit: JOBS_PAGE_SIZE, offset: currentJobsPage * JOBS_PAGE_SIZE }),
-          listWalletLedger({ limit: LEDGER_PAGE_SIZE, offset: currentLedgerPage * LEDGER_PAGE_SIZE }),
-          listPayments({ limit: 6 })
+          listWalletLedger({ limit: LEDGER_PAGE_SIZE, offset: currentLedgerPage * LEDGER_PAGE_SIZE })
         ]);
 
         setUser(currentUser);
@@ -221,213 +131,45 @@ export default function DashboardPage() {
         setLedger(currentLedger.items);
         setLedgerTotal(currentLedger.total ?? 0);
         setLedgerHasMore(currentLedger.hasMore ?? false);
-        syncPaymentsState(currentPayments.items);
         setLoadState("ready");
-
-        const welcomeCredit = window.sessionStorage.getItem("voxora_welcome_credit");
-        if (welcomeCredit) {
-          setPaymentFeedback(
-            "success",
-            `Conta criada com sucesso. Crédito inicial liberado: R$ ${Number(welcomeCredit).toFixed(2)}.`
-          );
-          window.sessionStorage.removeItem("voxora_welcome_credit");
-        }
       } catch (error) {
         if (error instanceof ApiError && error.status === 401) {
           clearSessionTokens();
           navigate("/login", { replace: true });
           return;
         }
-
-        setLoadError(getErrorMessage(error, "Nao foi possivel carregar o dashboard."));
+        setLoadError(getErrorMessage(error, "Não foi possível carregar o dashboard."));
         setLoadState("error");
-      } finally {
-        setIsRefreshingData(false);
       }
     },
-    [navigate, jobsPage, ledgerPage, setPaymentFeedback, syncPaymentsState]
+    [navigate, jobsPage, ledgerPage]
   );
 
-  const refreshPaymentStatus = useCallback(async () => {
-    try {
-      const currentPayments = await listPayments({ limit: 6 });
-      const previousPendingIds = new Set(
-        payments.filter((payment) => payment.status === "pending").map((payment) => payment.id)
-      );
-      syncPaymentsState(currentPayments.items);
-
-      const resolvedPayments = currentPayments.items.filter(
-        (payment) => previousPendingIds.has(payment.id) && payment.status !== "pending"
-      );
-      if (resolvedPayments.length === 0) {
-        return;
-      }
-
-      const needsWalletRefresh = resolvedPayments.some(
-        (payment) => payment.status === "approved"
-      );
-      if (!needsWalletRefresh) {
-        return;
-      }
-
-      const [currentWallet, currentLedger] = await Promise.all([
-        getWallet(),
-        listWalletLedger({ limit: LEDGER_PAGE_SIZE, offset: ledgerPage * LEDGER_PAGE_SIZE })
-      ]);
-      setWallet(currentWallet);
-      setLedger(currentLedger.items);
-      setLedgerTotal(currentLedger.total ?? 0);
-      setLedgerHasMore(currentLedger.hasMore ?? false);
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 401) {
-        clearSessionTokens();
-        navigate("/login", { replace: true });
-      }
-    }
-  }, [LEDGER_PAGE_SIZE, ledgerPage, navigate, payments, syncPaymentsState]);
-
-  const handleJobsPageChange = useCallback((page: number) => {
-    setJobsPage(page);
-    void loadDashboard({ isRefresh: true, jobsPageOverride: page });
-  }, [loadDashboard]);
-
-  const handleLedgerPageChange = useCallback((page: number) => {
-    setLedgerPage(page);
-    void loadDashboard({ isRefresh: true, ledgerPageOverride: page });
-  }, [loadDashboard]);
-
-  const handleCreatePixPayment = useCallback(async () => {
-    const parsed = Number.parseFloat(topUpAmountInput.replace(",", "."));
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-      setPaymentFeedback("error", "Informe um valor de recarga válido.");
-      return;
-    }
-
-    setIsCreatingPayment(true);
-    setPaymentFeedback("neutral", "Gerando cobrança PIX...");
-
-    try {
-      const created = await createPixPayment({ amount: parsed });
-      setActivePixPayment(created);
-      setPaymentFeedback("success", "PIX gerado com sucesso. Conclua o pagamento para liberar os créditos.");
-      await loadDashboard({ isRefresh: true });
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 401) {
-        clearSessionTokens();
-        navigate("/login", { replace: true });
-        return;
-      }
-      setPaymentFeedback("error", getErrorMessage(error, "Falha ao gerar pagamento PIX."));
-    } finally {
-      setIsCreatingPayment(false);
-    }
-  }, [loadDashboard, navigate, setPaymentFeedback, topUpAmountInput]);
-
-  const handleCreateCardPayment = useCallback(
-    async (payload: {
-      amount: number;
-      token: string;
-      issuerId?: string;
-      paymentMethodId: string;
-      paymentMethodOptionId?: string;
-      processingMode?: string;
-      installments: number;
-      payer: {
-        email: string;
-        identification?: {
-          type: string;
-          number: string;
-        };
-      };
-      cardholderName?: string;
-      paymentTypeId?: string;
-      lastFourDigits?: string;
-    }) => {
-      setIsCreatingCardPayment(true);
-      setPaymentFeedback("neutral", "Processando pagamento com cartao...");
-
-      try {
-        const created = await createCardPayment(payload);
-        const status = created.payment.status;
-        if (status === "approved") {
-          setPaymentFeedback(
-            "success",
-            "Pagamento aprovado. Os creditos ja foram adicionados na sua carteira."
-          );
-        } else if (status === "pending") {
-          setPaymentFeedback(
-            "neutral",
-            "Pagamento enviado. Vamos acompanhar a confirmacao automaticamente."
-          );
-        } else if (status === "rejected") {
-          setPaymentFeedback(
-            "error",
-            created.payment.statusDetail ||
-              "O pagamento com cartao foi recusado. Revise os dados e tente novamente."
-          );
-        } else {
-          setPaymentFeedback(
-            "error",
-            "O pagamento com cartao expirou antes da confirmacao. Tente novamente."
-          );
-        }
-        await loadDashboard({ isRefresh: true });
-      } catch (error) {
-        if (error instanceof ApiError && error.status === 401) {
-          clearSessionTokens();
-          navigate("/login", { replace: true });
-          return;
-        }
-        setPaymentFeedback(
-          "error",
-          getErrorMessage(error, "Falha ao processar pagamento com cartao.")
-        );
-      } finally {
-        setIsCreatingCardPayment(false);
-      }
+  const handleJobsPageChange = useCallback(
+    (page: number) => {
+      setJobsPage(page);
+      void loadDashboard({ isRefresh: true, jobsPageOverride: page });
     },
-    [loadDashboard, navigate, setPaymentFeedback]
+    [loadDashboard]
   );
 
-  const handleConfirmMockPayment = useCallback(async () => {
-    const paymentId = activePixPayment?.payment.id;
-    if (!paymentId) {
-      return;
-    }
-
-    setIsConfirmingMockPayment(true);
-    setPaymentFeedback("neutral", "Confirmando pagamento...");
-
-    try {
-      await confirmPixPayment(paymentId);
-      setPaymentFeedback("success", "Pagamento confirmado e créditos adicionados na carteira.");
-      setActivePixPayment(null);
-      await loadDashboard({ isRefresh: true });
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 401) {
-        clearSessionTokens();
-        navigate("/login", { replace: true });
-        return;
-      }
-      setPaymentFeedback("error", getErrorMessage(error, "Não foi possível confirmar o pagamento."));
-    } finally {
-      setIsConfirmingMockPayment(false);
-    }
-  }, [activePixPayment?.payment.id, loadDashboard, navigate, setPaymentFeedback]);
+  const handleLedgerPageChange = useCallback(
+    (page: number) => {
+      setLedgerPage(page);
+      void loadDashboard({ isRefresh: true, ledgerPageOverride: page });
+    },
+    [loadDashboard]
+  );
 
   const handleRetryFailedJob = useCallback(
     async (jobId: string) => {
       let shouldProcess = false;
       setRetryingJobIds((current) => {
-        if (current.includes(jobId)) {
-          return current;
-        }
+        if (current.includes(jobId)) return current;
         shouldProcess = true;
         return [...current, jobId];
       });
-      if (!shouldProcess) {
-        return;
-      }
+      if (!shouldProcess) return;
 
       setJobsFeedback("neutral", "Reenfileirando job para novo processamento...");
 
@@ -441,8 +183,7 @@ export default function DashboardPage() {
           navigate("/login", { replace: true });
           return;
         }
-
-        setJobsFeedback("error", getErrorMessage(error, "Nao foi possivel reenfileirar o job para reprocessamento."));
+        setJobsFeedback("error", getErrorMessage(error, "Não foi possível reenfileirar o job."));
       } finally {
         setRetryingJobIds((current) => current.filter((id) => id !== jobId));
       }
@@ -459,31 +200,13 @@ export default function DashboardPage() {
   }, [loadDashboard, navigate]);
 
   useEffect(() => {
-    if (!hasProcessingJobs) {
-      return;
-    }
-
-    const timer = setInterval(() => {
-      void loadDashboard({ isRefresh: true });
-    }, 5000);
-
+    if (!hasProcessingJobs) return;
+    const timer = setInterval(() => void loadDashboard({ isRefresh: true }), 5000);
     return () => clearInterval(timer);
   }, [hasProcessingJobs, loadDashboard]);
 
-  useEffect(() => {
-    if (!hasPendingPayments || selectedTopUpMethod === "credit_card") {
-      return;
-    }
-
-    const timer = setInterval(() => {
-      void refreshPaymentStatus();
-    }, 5000);
-
-    return () => clearInterval(timer);
-  }, [hasPendingPayments, refreshPaymentStatus, selectedTopUpMethod]);
-
   return (
-    <main className="font-display text-slate-900 antialiased dark:text-slate-100">
+    <main className="font-body text-slate-900 antialiased dark:text-slate-100">
       <div className="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark">
         <DashboardSidebar user={user} activeMenu="dashboard" />
 
@@ -496,7 +219,6 @@ export default function DashboardPage() {
               walletUsagePercent={walletUsagePercent}
               todayUsageSeconds={todayUsageSeconds}
               latestCreditEntry={latestCreditEntry}
-              onAddCreditsClick={focusCreditsPanel}
             />
 
             <div className="grid grid-cols-12 gap-8">
@@ -515,7 +237,7 @@ export default function DashboardPage() {
                 pageSize={JOBS_PAGE_SIZE}
               />
 
-              <div className="col-span-4 space-y-4">
+              <div className="col-span-4">
                 <LedgerPanel
                   ledger={ledger}
                   total={ledgerTotal}
@@ -524,24 +246,6 @@ export default function DashboardPage() {
                   onPageChange={handleLedgerPageChange}
                   pageSize={LEDGER_PAGE_SIZE}
                 />
-                <CreditManagementPanel
-                  amountInput={topUpAmountInput}
-                  onAmountInputChange={setTopUpAmountInput}
-                  onCreatePixPayment={handleCreatePixPayment}
-                  onCreateCardPayment={handleCreateCardPayment}
-                  payerEmail={user?.email ?? null}
-                  isCreatingPayment={isCreatingPayment}
-                  isCreatingCardPayment={isCreatingCardPayment}
-                  isRefreshingData={isRefreshingData}
-                  activePix={activePixPayment}
-                  onConfirmMockPayment={handleConfirmMockPayment}
-                  isConfirmingMockPayment={isConfirmingMockPayment}
-                  payments={payments}
-                  feedbackMessage={paymentFeedbackMessage}
-                  feedbackTone={paymentFeedbackTone}
-                  onSelectedMethodChange={setSelectedTopUpMethod}
-                />
-                <OptimizationTip />
               </div>
             </div>
           </div>

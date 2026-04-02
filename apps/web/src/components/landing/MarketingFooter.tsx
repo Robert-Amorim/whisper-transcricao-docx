@@ -1,103 +1,40 @@
+import { Link } from "react-router-dom";
+
 export default function MarketingFooter() {
+  const year = new Date().getFullYear();
+
   return (
-    <footer className="lp-footer-section border-t border-slate-200 bg-white px-6 py-12 dark:border-slate-800 dark:bg-surface-dark">
-      <div className="mx-auto grid max-w-7xl grid-cols-1 gap-12 md:grid-cols-4">
-        <div className="col-span-1 md:col-span-1">
-          <div className="mb-4 flex items-center gap-2">
-            <div className="size-6 text-primary">
-              <span className="material-symbols-outlined text-2xl">graphic_eq</span>
-            </div>
-            <h3 className="font-bold text-slate-900 dark:text-white">Voxora</h3>
-          </div>
-          <p className="lp-copy text-sm leading-relaxed text-slate-500 dark:text-slate-300">
-            Transformando áudio em conhecimento com o poder da inteligência artificial.
-          </p>
+    <footer className="border-t border-slate-200 bg-white px-6 py-10 dark:border-slate-800 dark:bg-surface-dark">
+      <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-6 md:flex-row">
+        <div className="flex items-center gap-2">
+          <span className="material-symbols-outlined text-[24px] text-primary">graphic_eq</span>
+          <span className="font-display font-bold text-slate-900 dark:text-white">Voxora</span>
         </div>
 
-        <div>
-          <h4 className="mb-4 font-bold text-slate-900 dark:text-white">Produto</h4>
-          <ul className="lp-copy flex flex-col gap-2 text-sm text-slate-500 dark:text-slate-200">
-            <li>
-              <a className="transition-colors hover:text-primary" href="#">
-                Funcionalidades
-              </a>
-            </li>
-            <li>
-              <a className="transition-colors hover:text-primary" href="#precos">
-                Preços
-              </a>
-            </li>
-            <li>
-              <a className="transition-colors hover:text-primary" href="#">
-                API
-              </a>
-            </li>
-            <li>
-              <a className="transition-colors hover:text-primary" href="#">
-                Integrações
-              </a>
-            </li>
-          </ul>
-        </div>
-
-        <div>
-          <h4 className="mb-4 font-bold text-slate-900 dark:text-white">Recursos</h4>
-          <ul className="lp-copy flex flex-col gap-2 text-sm text-slate-500 dark:text-slate-200">
-            <li>
-              <a className="transition-colors hover:text-primary" href="#">
-                Blog
-              </a>
-            </li>
-            <li>
-              <a className="transition-colors hover:text-primary" href="#">
-                Comunidade
-              </a>
-            </li>
-            <li>
-              <a className="transition-colors hover:text-primary" href="#">
-                Ajuda
-              </a>
-            </li>
-            <li>
-              <a className="transition-colors hover:text-primary" href="#">
-                Privacidade
-              </a>
-            </li>
-          </ul>
-        </div>
-
-        <div>
-          <h4 className="mb-4 font-bold text-slate-900 dark:text-white">Empresa</h4>
-          <ul className="lp-copy flex flex-col gap-2 text-sm text-slate-500 dark:text-slate-200">
-            <li>
-              <a className="transition-colors hover:text-primary" href="#">
-                Sobre
-              </a>
-            </li>
-            <li>
-              <a className="transition-colors hover:text-primary" href="#">
-                Carreiras
-              </a>
-            </li>
-            <li>
-              <a className="transition-colors hover:text-primary" href="#">
-                Contato
-              </a>
-            </li>
-          </ul>
-        </div>
-      </div>
-
-      <div className="lp-copy mx-auto mt-12 flex max-w-7xl flex-col items-center justify-between gap-4 border-t border-slate-100 pt-8 text-sm text-slate-500 md:flex-row dark:border-slate-800 dark:text-slate-300">
-        <p>© 2023 Voxora. Todos os direitos reservados.</p>
-        <div className="flex gap-4">
-          <a className="hover:text-primary" href="#">
-            <span className="material-symbols-outlined">language</span>
+        <nav className="flex items-center gap-6">
+          <a
+            href="#como-funciona"
+            className="font-body text-sm text-slate-500 transition-colors hover:text-primary dark:text-slate-400 dark:hover:text-primary"
+          >
+            Como funciona
           </a>
-          <a className="hover:text-primary" href="#">
-            <span className="material-symbols-outlined">alternate_email</span>
-          </a>
-        </div>
+          <Link
+            to="/login"
+            className="font-body text-sm text-slate-500 transition-colors hover:text-primary dark:text-slate-400 dark:hover:text-primary"
+          >
+            Entrar
+          </Link>
+          <Link
+            to="/login"
+            className="font-body text-sm text-slate-500 transition-colors hover:text-primary dark:text-slate-400 dark:hover:text-primary"
+          >
+            Criar conta
+          </Link>
+        </nav>
+
+        <p className="font-body text-xs text-slate-400 dark:text-slate-500">
+          © {year} Voxora. Todos os direitos reservados.
+        </p>
       </div>
     </footer>
   );

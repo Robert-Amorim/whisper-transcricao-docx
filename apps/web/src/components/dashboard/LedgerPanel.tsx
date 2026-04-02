@@ -95,7 +95,7 @@ export default function LedgerPanel({
     return {
       id: entry.id,
       title: getLedgerTypeLabel(entry.type),
-      subtitle: entry.jobId ? `Job: ${entry.jobId}` : "Movimentação da carteira",
+      subtitle: entry.jobId ? "Transcrição processada" : "Movimentação da carteira",
       dateLabel: formatDateTime(entry.createdAt),
       amountLabel: `${signal} ${formatCurrency(entry.amount)}`,
       tone: signal === "+" ? "positive" : "negative",
@@ -106,12 +106,7 @@ export default function LedgerPanel({
   return (
     <aside className="space-y-4" id="atividade">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <h4 className="text-lg font-bold">Atividade recente</h4>
-          <span className="rounded bg-slate-100 px-2 py-1 font-mono text-[10px] text-slate-400 dark:bg-slate-800">
-            /v1/wallet/ledger
-          </span>
-        </div>
+        <h4 className="font-display text-lg font-bold tracking-tight">Atividade recente</h4>
       </div>
 
       <div className="space-y-6 rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
@@ -132,9 +127,9 @@ export default function LedgerPanel({
                 </div>
                 <div className="min-w-0 flex-1 overflow-hidden">
                   <div className="flex items-center justify-between gap-3">
-                    <p className="truncate text-sm font-semibold">{item.title}</p>
+                    <p className="truncate font-body text-sm font-semibold">{item.title}</p>
                     <p
-                      className={`text-sm font-bold ${
+                      className={`font-mono text-sm font-bold ${
                         item.tone === "positive"
                           ? "text-emerald-500"
                           : item.tone === "neutral"
@@ -145,8 +140,8 @@ export default function LedgerPanel({
                       {item.amountLabel}
                     </p>
                   </div>
-                  <p className="text-xs text-slate-500">{item.subtitle}</p>
-                  <p className="mt-1 text-[10px] text-slate-400">{item.dateLabel}</p>
+                  <p className="font-body text-xs text-slate-500">{item.subtitle}</p>
+                  <p className="mt-1 font-mono text-[10px] text-slate-400">{item.dateLabel}</p>
                 </div>
               </div>
             ))}
@@ -155,7 +150,7 @@ export default function LedgerPanel({
 
         {onPageChange && totalPages > 1 ? (
           <div className="flex items-center justify-between pt-2">
-            <span className="text-xs text-slate-500">
+            <span className="font-mono text-xs text-slate-500">
               Página {currentPage + 1} de {totalPages}
               {total > 0 ? ` · ${total} movimentações` : ""}
             </span>

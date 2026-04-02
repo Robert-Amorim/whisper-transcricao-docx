@@ -3,7 +3,6 @@ import HeroSection from "../components/landing/HeroSection";
 import HowItWorksSection from "../components/landing/HowItWorksSection";
 import MarketingFooter from "../components/landing/MarketingFooter";
 import MarketingHeader from "../components/landing/MarketingHeader";
-import PricingSection from "../components/landing/PricingSection";
 import ProfessionalSection from "../components/landing/ProfessionalSection";
 
 export default function HomePage() {
@@ -16,7 +15,6 @@ export default function HomePage() {
           <HeroSection />
           <HowItWorksSection />
           <ProfessionalSection />
-          <PricingSection />
           <CtaSection />
         </main>
 

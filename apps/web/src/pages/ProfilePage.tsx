@@ -1,20 +1,11 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import DashboardSidebar from "../components/dashboard/DashboardSidebar";
+import Spinner from "../components/common/Spinner";
 import { ApiError, getErrorMessage, getMe, updateMe } from "../lib/api";
 import { clearSessionTokens, getSessionTokens } from "../lib/session";
+import { formatDateTime } from "../lib/transcriptions";
 import type { PublicUser } from "../lib/types";
-
-function formatDateTime(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "--";
-  }
-  return date.toLocaleString("pt-BR", {
-    dateStyle: "medium",
-    timeStyle: "short"
-  });
-}
 
 export default function ProfilePage() {
   const navigate = useNavigate();
@@ -170,7 +161,10 @@ export default function ProfilePage() {
   if (isBootstrapping) {
     return (
       <main className="grid min-h-screen place-items-center bg-background-dark text-slate-100">
-        <h1>Carregando perfil...</h1>
+        <div className="flex items-center gap-3">
+          <Spinner size="sm" className="text-primary" />
+          <span className="font-body text-sm text-slate-400">Carregando perfil...</span>
+        </div>
       </main>
     );
   }
@@ -210,15 +204,15 @@ export default function ProfilePage() {
   }
 
   return (
-    <main className="font-display text-slate-900 antialiased dark:text-slate-100">
+    <main className="font-body text-slate-900 antialiased dark:text-slate-100">
       <div className="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark">
         <DashboardSidebar user={user} activeMenu="settings" />
 
         <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <header className="flex h-16 items-center justify-between border-b border-slate-200 bg-white px-8 dark:border-slate-800 dark:bg-background-dark/50">
             <div className="flex flex-col">
-              <h2 className="text-xl font-bold tracking-tight">Perfil</h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
+              <h2 className="font-display text-xl font-bold tracking-tight">Perfil</h2>
+              <p className="font-body text-xs text-slate-500 dark:text-slate-400">
                 Gerencie sua conta e credenciais de acesso.
               </p>
             </div>
@@ -243,15 +237,15 @@ export default function ProfilePage() {
             <div className="mx-auto grid max-w-6xl grid-cols-12 gap-6">
               <article className="col-span-12 rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900 lg:col-span-7">
                 <div className="mb-6">
-                  <h3 className="text-lg font-bold">Dados da conta</h3>
-                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  <h3 className="font-display text-lg font-bold">Dados da conta</h3>
+                  <p className="mt-1 font-body text-sm text-slate-500 dark:text-slate-400">
                     Atualize os dados principais usados no login.
                   </p>
                 </div>
 
                 <form className="space-y-4" onSubmit={handleProfileSubmit}>
                   <label className="block space-y-2">
-                    <span className="text-sm font-semibold">Nome</span>
+                    <span className="font-body text-sm font-semibold">Nome</span>
                     <input
                       required
                       value={name}
@@ -262,7 +256,7 @@ export default function ProfilePage() {
                   </label>
 
                   <label className="block space-y-2">
-                    <span className="text-sm font-semibold">E-mail</span>
+                    <span className="font-body text-sm font-semibold">E-mail</span>
                     <input
                       type="email"
                       required
@@ -297,15 +291,15 @@ export default function ProfilePage() {
               <aside className="col-span-12 space-y-6 lg:col-span-5">
                 <article className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
                   <div className="mb-6">
-                    <h3 className="text-lg font-bold">Segurança</h3>
-                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                    <h3 className="font-display text-lg font-bold">Segurança</h3>
+                    <p className="mt-1 font-body text-sm text-slate-500 dark:text-slate-400">
                       Altere sua senha com validação da senha atual.
                     </p>
                   </div>
 
                   <form className="space-y-4" onSubmit={handlePasswordSubmit}>
                     <label className="block space-y-2">
-                      <span className="text-sm font-semibold">Senha atual</span>
+                      <span className="font-body text-sm font-semibold">Senha atual</span>
                       <input
                         type="password"
                         autoComplete="current-password"
@@ -317,7 +311,7 @@ export default function ProfilePage() {
                     </label>
 
                     <label className="block space-y-2">
-                      <span className="text-sm font-semibold">Nova senha</span>
+                      <span className="font-body text-sm font-semibold">Nova senha</span>
                       <input
                         type="password"
                         autoComplete="new-password"
@@ -330,7 +324,7 @@ export default function ProfilePage() {
                     </label>
 
                     <label className="block space-y-2">
-                      <span className="text-sm font-semibold">Confirmar nova senha</span>
+                      <span className="font-body text-sm font-semibold">Confirmar nova senha</span>
                       <input
                         type="password"
                         autoComplete="new-password"
@@ -364,15 +358,15 @@ export default function ProfilePage() {
                 </article>
 
                 <article className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
-                  <h3 className="text-lg font-bold">Sessão e informações</h3>
+                  <h3 className="font-display text-lg font-bold">Sessão e informações</h3>
                   <dl className="mt-4 space-y-2 text-sm text-slate-500 dark:text-slate-400">
                     <div className="flex items-center justify-between gap-4">
-                      <dt>Conta criada em</dt>
-                      <dd className="text-right text-slate-700 dark:text-slate-200">{accountCreatedAt}</dd>
+                      <dt className="font-body">Conta criada em</dt>
+                      <dd className="font-mono text-right text-slate-700 dark:text-slate-200">{accountCreatedAt}</dd>
                     </div>
                     <div className="flex items-center justify-between gap-4">
-                      <dt>Última atualização</dt>
-                      <dd className="text-right text-slate-700 dark:text-slate-200">{accountUpdatedAt}</dd>
+                      <dt className="font-body">Última atualização</dt>
+                      <dd className="font-mono text-right text-slate-700 dark:text-slate-200">{accountUpdatedAt}</dd>
                     </div>
                   </dl>
 

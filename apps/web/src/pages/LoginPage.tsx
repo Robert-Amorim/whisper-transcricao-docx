@@ -1,9 +1,21 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ApiError, getErrorMessage, getMe, login, register } from "../lib/api";
+import { ApiError, getErrorMessage, getMe, login, register, requestPasswordReset } from "../lib/api";
 import { clearSessionTokens, getSessionTokens, setSessionTokens } from "../lib/session";
 
 type AuthMode = "login" | "register";
+
+const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined;
+
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (container: string | HTMLElement, options: Record<string, unknown>) => string;
+      reset: (widgetId: string) => void;
+      remove: (widgetId: string) => void;
+    };
+  }
+}
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -15,6 +27,13 @@ export default function LoginPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState("");
+  const [passwordResetEmail, setPasswordResetEmail] = useState("");
+  const [passwordResetDeliveryAvailable, setPasswordResetDeliveryAvailable] = useState(true);
+  const turnstileRef = useRef<HTMLDivElement>(null);
+  const turnstileWidgetId = useRef<string | null>(null);
 
   useEffect(() => {
     async function bootstrap() {
@@ -39,12 +58,57 @@ export default function LoginPage() {
     void bootstrap();
   }, [navigate]);
 
+  // Render Turnstile widget when switching to register mode
+  useEffect(() => {
+    if (!TURNSTILE_SITE_KEY || mode !== "register") return;
+
+    const tryRender = () => {
+      if (!turnstileRef.current || !window.turnstile) return;
+      if (turnstileWidgetId.current) {
+        window.turnstile.reset(turnstileWidgetId.current);
+        return;
+      }
+      turnstileWidgetId.current = window.turnstile.render(turnstileRef.current, {
+        sitekey: TURNSTILE_SITE_KEY,
+        callback: (token: string) => setTurnstileToken(token),
+        "expired-callback": () => setTurnstileToken(""),
+        "error-callback": () => setTurnstileToken(""),
+        theme: "dark",
+      });
+    };
+
+    // Script may still be loading
+    if (window.turnstile) {
+      tryRender();
+    } else {
+      const interval = setInterval(() => {
+        if (window.turnstile) { clearInterval(interval); tryRender(); }
+      }, 100);
+      return () => clearInterval(interval);
+    }
+
+    return () => {
+      if (turnstileWidgetId.current && window.turnstile) {
+        window.turnstile.remove(turnstileWidgetId.current);
+        turnstileWidgetId.current = null;
+        setTurnstileToken("");
+      }
+    };
+  }, [mode]);
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
     setIsSubmitting(true);
 
     try {
+      if (isForgotPassword) {
+        const response = await requestPasswordReset({ email });
+        setPasswordResetEmail(email.trim());
+        setPasswordResetDeliveryAvailable(response.deliveryAvailable);
+        return;
+      }
+
       const auth =
         mode === "login"
           ? await login({
@@ -54,16 +118,25 @@ export default function LoginPage() {
           : await register({
               name: name.trim(),
               email,
-              password
+              password,
+              ...(TURNSTILE_SITE_KEY ? { turnstileToken } : {})
             });
+
+      if (mode === "register") {
+        // Show "check your email" screen if verification email was sent — don't log in yet
+        if ((auth as { emailVerificationSent?: boolean }).emailVerificationSent) {
+          if (auth.welcomeCredit) {
+            window.sessionStorage.setItem("voxora_welcome_credit", auth.welcomeCredit);
+          }
+          setRegisteredEmail(email);
+          return;
+        }
+      }
 
       setSessionTokens({
         accessToken: auth.accessToken,
         refreshToken: auth.refreshToken
       });
-      if (mode === "register" && auth.welcomeCredit) {
-        window.sessionStorage.setItem("voxora_welcome_credit", auth.welcomeCredit);
-      }
       navigate("/dashboard", { replace: true });
     } catch (submissionError) {
       setError(getErrorMessage(submissionError, "Nao foi possivel autenticar."));
@@ -76,6 +149,71 @@ export default function LoginPage() {
     return (
       <main className="grid min-h-screen place-items-center bg-background-dark text-slate-100">
         <h1>Verificando sessão...</h1>
+      </main>
+    );
+  }
+
+  if (registeredEmail) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center bg-background-dark px-6">
+        <div className="w-full max-w-md rounded-xl border border-slate-800 bg-slate-900 p-8 text-center">
+          <div className="mb-6 flex items-center justify-center gap-2">
+            <span className="material-symbols-outlined text-[28px] text-primary">graphic_eq</span>
+            <span className="font-display text-xl font-bold text-white">Voxora</span>
+          </div>
+          <div className="mb-4 flex justify-center">
+            <span className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
+              <span className="material-symbols-outlined text-[32px] text-primary">mark_email_unread</span>
+            </span>
+          </div>
+          <h1 className="mb-2 font-display text-xl font-bold text-white">Verifique seu e-mail</h1>
+          <p className="mb-1 font-body text-sm text-slate-400">
+            Enviamos um link de confirmação para:
+          </p>
+          <p className="mb-6 font-mono text-sm font-semibold text-slate-200">{registeredEmail}</p>
+          <p className="font-body text-xs text-slate-500">
+            Clique no link do e-mail para ativar sua conta e depois faça login. O link expira em 24 horas.
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  if (passwordResetEmail) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center bg-background-dark px-6">
+        <div className="w-full max-w-md rounded-xl border border-slate-800 bg-slate-900 p-8 text-center">
+          <div className="mb-6 flex items-center justify-center gap-2">
+            <span className="material-symbols-outlined text-[28px] text-primary">graphic_eq</span>
+            <span className="font-display text-xl font-bold text-white">Voxora</span>
+          </div>
+          <div className="mb-4 flex justify-center">
+            <span className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
+              <span className="material-symbols-outlined text-[32px] text-primary">key</span>
+            </span>
+          </div>
+          <h1 className="mb-2 font-display text-xl font-bold text-white">Verifique seu e-mail</h1>
+          <p className="mb-1 font-body text-sm text-slate-400">
+            Se existir uma conta vinculada a:
+          </p>
+          <p className="mb-6 font-mono text-sm font-semibold text-slate-200">{passwordResetEmail}</p>
+          <p className="font-body text-xs text-slate-500">
+            {passwordResetDeliveryAvailable
+              ? "Você receberá um link para criar uma nova senha. O link expira em poucas horas por segurança."
+              : "O envio automático de e-mails não está disponível neste ambiente. Se precisar testar este fluxo, configure o provedor SMTP antes de continuar."}
+          </p>
+          <button
+            type="button"
+            className="mt-6 inline-flex items-center gap-2 rounded-lg border border-slate-700 px-6 py-2.5 font-body text-sm font-semibold text-slate-300 transition hover:bg-slate-800"
+            onClick={() => {
+              setPasswordResetEmail("");
+              setIsForgotPassword(false);
+              setError("");
+            }}
+          >
+            Voltar ao login
+          </button>
+        </div>
       </main>
     );
   }
@@ -163,12 +301,13 @@ export default function LoginPage() {
                 <button
                   type="button"
                   className={`flex-1 py-4 text-sm font-bold transition-colors ${
-                    mode === "login"
+                    mode === "login" && !isForgotPassword
                       ? "border-b-2 border-primary text-primary"
                       : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
                   } rounded-none`}
                   onClick={() => {
                     setMode("login");
+                    setIsForgotPassword(false);
                     setError("");
                   }}
                 >
@@ -177,12 +316,13 @@ export default function LoginPage() {
                 <button
                   type="button"
                   className={`flex-1 py-4 text-sm font-bold transition-colors ${
-                    mode === "register"
+                    mode === "register" && !isForgotPassword
                       ? "border-b-2 border-primary text-primary"
                       : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
                   } rounded-none`}
                   onClick={() => {
                     setMode("register");
+                    setIsForgotPassword(false);
                     setError("");
                   }}
                 >
@@ -192,7 +332,16 @@ export default function LoginPage() {
 
               <form className="flex h-full flex-col justify-between p-8" onSubmit={handleSubmit}>
                 <div className="space-y-4">
-                  {mode === "register" ? (
+                  {isForgotPassword ? (
+                    <div className="rounded-2xl border border-primary/10 bg-primary/5 p-4">
+                      <p className="text-sm font-semibold text-slate-900 dark:text-white">Recuperar acesso</p>
+                      <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                        Informe o e-mail da sua conta para receber um link seguro de redefinição.
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {mode === "register" && !isForgotPassword ? (
                     <div className="space-y-2">
                       <label className="text-sm font-medium">Nome</label>
                       <input
@@ -219,38 +368,54 @@ export default function LoginPage() {
                     />
                   </div>
 
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <label className="text-sm font-medium">Senha</label>
-                      {mode === "login" ? (
-                        <a className="text-xs text-primary hover:underline" href="#">
-                          Esqueci a senha
-                        </a>
-                      ) : null}
+                  {!isForgotPassword ? (
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <label className="text-sm font-medium">Senha</label>
+                        {mode === "login" ? (
+                          <button
+                            type="button"
+                            className="text-sm font-medium text-primary transition hover:opacity-80"
+                            onClick={() => {
+                              setIsForgotPassword(true);
+                              setError("");
+                              setPassword("");
+                              setShowPassword(false);
+                            }}
+                          >
+                            Esqueci minha senha
+                          </button>
+                        ) : null}
+                      </div>
+                      <div className="relative">
+                        <input
+                          autoComplete={mode === "login" ? "current-password" : "new-password"}
+                          type={showPassword ? "text" : "password"}
+                          minLength={8}
+                          required
+                          value={password}
+                          onChange={(event) => setPassword(event.target.value)}
+                          placeholder="••••••••"
+                          className="h-12 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 pr-12 outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-primary dark:border-slate-800 dark:bg-[#111418]"
+                        />
+                        <button
+                          type="button"
+                          className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"
+                          onClick={() => setShowPassword((current) => !current)}
+                          aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                        >
+                          <span className="material-symbols-outlined text-xl">
+                            {showPassword ? "visibility_off" : "visibility"}
+                          </span>
+                        </button>
+                      </div>
                     </div>
-                    <div className="relative">
-                      <input
-                        autoComplete={mode === "login" ? "current-password" : "new-password"}
-                        type={showPassword ? "text" : "password"}
-                        minLength={8}
-                        required
-                        value={password}
-                        onChange={(event) => setPassword(event.target.value)}
-                        placeholder="••••••••"
-                        className="h-12 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 pr-12 outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-primary dark:border-slate-800 dark:bg-[#111418]"
-                      />
-                      <button
-                        type="button"
-                        className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"
-                        onClick={() => setShowPassword((current) => !current)}
-                        aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
-                      >
-                        <span className="material-symbols-outlined text-xl">
-                          {showPassword ? "visibility_off" : "visibility"}
-                        </span>
-                      </button>
-                    </div>
-                  </div>
+                  ) : null}
+
+                  {/* Turnstile CAPTCHA — only in register mode when site key is configured */}
+                  {TURNSTILE_SITE_KEY && mode === "register" && !isForgotPassword ? (
+                    <div ref={turnstileRef} className="flex justify-center" />
+                  ) : null}
 
                   {error ? (
                     <p className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-300">
@@ -260,40 +425,40 @@ export default function LoginPage() {
 
                   <button
                     type="submit"
-                    disabled={isSubmitting}
+                    disabled={
+                      isSubmitting ||
+                      (
+                        TURNSTILE_SITE_KEY !== undefined &&
+                        mode === "register" &&
+                        !isForgotPassword &&
+                        !turnstileToken
+                      )
+                    }
                     className="mt-4 w-full rounded-lg bg-primary py-3 font-bold text-white transition-all hover:bg-primary/90 disabled:opacity-70"
                   >
-                    {isSubmitting ? "Enviando..." : mode === "login" ? "Acessar Painel" : "Criar conta"}
+                    {isSubmitting
+                      ? "Enviando..."
+                      : isForgotPassword
+                        ? "Enviar link de recuperação"
+                        : mode === "login"
+                          ? "Acessar Painel"
+                          : "Criar conta"}
                   </button>
+
+                  {isForgotPassword ? (
+                    <button
+                      type="button"
+                      className="w-full rounded-lg border border-slate-200 py-3 font-bold text-slate-600 transition hover:bg-slate-50 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-900"
+                      onClick={() => {
+                        setIsForgotPassword(false);
+                        setError("");
+                      }}
+                    >
+                      Voltar
+                    </button>
+                  ) : null}
                 </div>
 
-                <div className="mt-8 border-t border-slate-200 pt-8 dark:border-slate-800">
-                  <p className="mb-4 text-center text-xs text-slate-500">Ou continue com</p>
-                  <div className="grid grid-cols-2 gap-4">
-                    <button
-                      type="button"
-                      className="flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800"
-                    >
-                      <img
-                        alt="Google Logo"
-                        className="h-4 w-4"
-                        src="https://lh3.googleusercontent.com/aida-public/AB6AXuAYZ8eX1DdNPujOFfLTRv0bYP3bAlIYtTmLZldKIabIL-q60KmvsAlpwsLvxKBokU2woW5h5DKannmunU8ZDVvkcCfihu2CegpBcZRrxqgnAOCCN0O8Kro3oHJmtlTfrjQcowgGldLXqxrZyVy_hPVwaoqZ-KmfLu780Fk0x4ePma0YF-YMoz4B6X_s5f9ars82IManVQAQD4makVzAJF9MA9iJh5qkNg2JweuUMftETq_CxQ10AeRuKb6M-7DCvHf5MlOwh5BtZW0"
-                      />
-                      <span className="text-sm">Google</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800"
-                    >
-                      <img
-                        alt="LinkedIn Logo"
-                        className="h-4 w-4"
-                        src="https://lh3.googleusercontent.com/aida-public/AB6AXuCR1jkfoAN4IqD-iYJ2pN7kFZRdIlhfpH05rOaiD92hCNSCXnuhzQo51HP2-3tdUfb39Mj-5EOMBoj0kJpwBc_wSyH5MWWUHXRPzgESuql1EMy8tzPBjnTBnCTWvWRJXILpBo2u2rd7XoKedRKbPb6hU5JTzDkO1Q-QPTeL7f4arGTAmBMyN_gz9d2olA1FDaIVrik7-HiNg1MEYdYZDa2DQIiQpDoNHhN_1BeMxnCPuWDfKOc16OnAyEn1eBAvrt84yALGGZjaBBM"
-                      />
-                      <span className="text-sm">LinkedIn</span>
-                    </button>
-                  </div>
-                </div>
               </form>
             </article>
           </div>

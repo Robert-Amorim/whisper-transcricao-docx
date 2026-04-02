@@ -7,7 +7,8 @@ import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import { Queue } from "bullmq";
 import Fastify, { FastifyReply, FastifyRequest } from "fastify";
 import argon2 from "argon2";
-import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import nodemailer from "nodemailer";
 import dotenv from "dotenv";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -19,6 +20,7 @@ import {
   LEDGER_TYPES,
   PAYMENT_STATUSES,
   OUTPUT_FORMATS,
+  TRANSCRIPT_VARIANTS,
   TRANSCRIPTION_JOB_NAME
 } from "@voxora/shared";
 import { z } from "zod";
@@ -73,6 +75,7 @@ const envSchema = z.object({
   OCI_BUCKET: z.string().optional(),
   OCI_READ_URL_TTL_MINUTES: z.coerce.number().int().min(1).max(43200).default(60),
   JWT_SECRET: z.string().min(16).default("change-this-secret-to-a-secure-value"),
+  PASSWORD_RESET_TOKEN_PEPPER: z.string().optional(),
   JWT_EXPIRES_IN: z.string().default("15m"),
   JWT_REFRESH_EXPIRES_IN: z.string().default("7d"),
   SIGNUP_WELCOME_CREDIT: z.coerce.number().min(0).default(1),
@@ -102,12 +105,165 @@ const envSchema = z.object({
   ),
   PAYMENT_DESCRIPTION_PREFIX: z.string().default("Voxora"),
   CORS_ALLOWED_ORIGINS: z.string().optional(),
-  REQUEST_TIMEOUT_MS: z.coerce.number().int().min(5000).max(600000).default(60000)
+  REQUEST_TIMEOUT_MS: z.coerce.number().int().min(5000).max(600000).default(60000),
+  TURNSTILE_SECRET_KEY: z.string().optional(),
+  EMAIL_HOST: z.string().default("smtpout.secureserver.net"),
+  EMAIL_PORT: z.coerce.number().int().default(465),
+  EMAIL_SECURE: z.coerce.boolean().default(true),
+  EMAIL_USER: z.string().optional(),
+  EMAIL_PASS: z.string().optional(),
+  EMAIL_FROM: z.string().default("Voxora <contato@integraretech.com.br>"),
+  APP_URL: z.string().default("https://voxora.integraretech.com.br"),
+  EMAIL_VERIFICATION_EXPIRES_HOURS: z.coerce.number().int().min(1).max(168).default(24),
+  PASSWORD_RESET_EXPIRES_HOURS: z.coerce.number().int().min(1).max(72).default(1)
 });
 
 const env = envSchema.parse(process.env);
 const monorepoRootDir = resolve(__dirname, "../../../");
 const signupWelcomeCredit = new Prisma.Decimal(env.SIGNUP_WELCOME_CREDIT.toFixed(6));
+const turnstileSecretKey = env.TURNSTILE_SECRET_KEY?.trim() || null;
+const passwordResetTokenPepper =
+  env.PASSWORD_RESET_TOKEN_PEPPER && env.PASSWORD_RESET_TOKEN_PEPPER.trim().length > 0
+    ? env.PASSWORD_RESET_TOKEN_PEPPER.trim()
+    : env.JWT_SECRET;
+
+if (env.NODE_ENV === "production" && (!env.PASSWORD_RESET_TOKEN_PEPPER || env.PASSWORD_RESET_TOKEN_PEPPER.trim().length === 0)) {
+  console.warn(
+    "[voxora/api] PASSWORD_RESET_TOKEN_PEPPER is not configured. Falling back to JWT_SECRET for password reset token hashing."
+  );
+}
+
+// Known disposable/temporary email providers
+const DISPOSABLE_EMAIL_DOMAINS = new Set([
+  "mailinator.com", "guerrillamail.com", "guerrillamail.net", "guerrillamail.org",
+  "guerrillamail.biz", "guerrillamail.info", "grr.la", "sharklasers.com",
+  "spam4.me", "trashmail.com", "trashmail.net", "trashmail.org", "trashmail.at",
+  "trashmail.io", "trashmail.me", "yopmail.com", "yopmail.fr", "yopmail.net",
+  "tempmail.com", "temp-mail.org", "temp-mail.io", "throwam.com", "throwam.io",
+  "dispostable.com", "mailnull.com", "maildrop.cc", "mailnesia.com",
+  "spamgourmet.com", "spamgourmet.net", "10minutemail.com", "10minutemail.net",
+  "10minutemail.org", "fakeinbox.com", "spamfree24.org", "discard.email",
+  "filzmail.com", "getnada.com", "mohmal.com", "throwam.com", "mailexpire.com",
+  "spamex.com", "spamoff.de", "e4ward.com", "hmamail.com", "incognitomail.org",
+  "mailme.lv", "mailnew.com", "zetmail.com", "deadaddress.com", "meltmail.com",
+  "nospamfor.us", "objectmail.com", "spamavert.com", "trashdevil.com",
+  "wegwerfmail.de", "wegwerfmail.net", "wegwerfmail.org",
+]);
+
+// Email transporter (only active when EMAIL_USER and EMAIL_PASS are set)
+const emailTransporter = env.EMAIL_USER && env.EMAIL_PASS
+  ? nodemailer.createTransport({
+      host: env.EMAIL_HOST,
+      port: env.EMAIL_PORT,
+      secure: env.EMAIL_SECURE,
+      auth: { user: env.EMAIL_USER, pass: env.EMAIL_PASS }
+    })
+  : null;
+
+async function sendVerificationEmail(toEmail: string, toName: string, token: string) {
+  if (!emailTransporter) return;
+  const verifyUrl = `${env.APP_URL}/verificar-email?token=${token}`;
+  await emailTransporter.sendMail({
+    from: env.EMAIL_FROM,
+    to: `${toName} <${toEmail}>`,
+    subject: "Confirme seu e-mail — Voxora",
+    html: `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#0f1923;color:#e2e8f0;border-radius:12px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:32px;">
+          <span style="font-size:24px;font-weight:900;color:#ffffff;letter-spacing:-1px;">Voxora</span>
+        </div>
+        <h1 style="font-size:22px;font-weight:700;margin:0 0 12px;color:#ffffff;">Confirme seu e-mail</h1>
+        <p style="color:#94a3b8;line-height:1.6;margin:0 0 28px;">
+          Olá, <strong style="color:#e2e8f0;">${toName}</strong>. Clique no botão abaixo para verificar seu endereço de e-mail e ativar sua conta no Voxora.
+        </p>
+        <a href="${verifyUrl}" style="display:inline-block;background:#2b8cee;color:#ffffff;font-weight:700;text-decoration:none;padding:14px 28px;border-radius:8px;font-size:15px;">
+          Verificar e-mail
+        </a>
+        <p style="color:#475569;font-size:13px;margin:28px 0 0;line-height:1.6;">
+          Este link expira em ${env.EMAIL_VERIFICATION_EXPIRES_HOURS} horas. Se você não criou uma conta no Voxora, ignore este e-mail.
+        </p>
+        <hr style="border:none;border-top:1px solid #1e293b;margin:28px 0;" />
+        <p style="color:#334155;font-size:12px;margin:0;">
+          Ou copie e cole este link no navegador:<br />
+          <span style="color:#2b8cee;word-break:break-all;">${verifyUrl}</span>
+        </p>
+      </div>
+    `
+  });
+}
+
+async function sendPasswordResetEmail(toEmail: string, toName: string, token: string) {
+  if (!emailTransporter) return;
+  const resetUrl = `${env.APP_URL}/redefinir-senha?token=${token}`;
+  await emailTransporter.sendMail({
+    from: env.EMAIL_FROM,
+    to: `${toName} <${toEmail}>`,
+    subject: "Redefina sua senha - Voxora",
+    html: `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#0f1923;color:#e2e8f0;border-radius:12px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:32px;">
+          <span style="font-size:24px;font-weight:900;color:#ffffff;letter-spacing:-1px;">Voxora</span>
+        </div>
+        <h1 style="font-size:22px;font-weight:700;margin:0 0 12px;color:#ffffff;">Redefina sua senha</h1>
+        <p style="color:#94a3b8;line-height:1.6;margin:0 0 28px;">
+          Olá, <strong style="color:#e2e8f0;">${toName}</strong>. Recebemos um pedido para trocar a senha da sua conta. Clique no botão abaixo para escolher uma nova senha.
+        </p>
+        <a href="${resetUrl}" style="display:inline-block;background:#2b8cee;color:#ffffff;font-weight:700;text-decoration:none;padding:14px 28px;border-radius:8px;font-size:15px;">
+          Redefinir senha
+        </a>
+        <p style="color:#475569;font-size:13px;margin:28px 0 0;line-height:1.6;">
+          Este link expira em ${env.PASSWORD_RESET_EXPIRES_HOURS} horas. Se você não solicitou esta alteração, ignore este e-mail.
+        </p>
+        <hr style="border:none;border-top:1px solid #1e293b;margin:28px 0;" />
+        <p style="color:#334155;font-size:12px;margin:0;">
+          Ou copie e cole este link no navegador:<br />
+          <span style="color:#2b8cee;word-break:break-all;">${resetUrl}</span>
+        </p>
+      </div>
+    `
+  });
+}
+
+async function sendPasswordChangedEmail(toEmail: string, toName: string) {
+  if (!emailTransporter) return;
+  await emailTransporter.sendMail({
+    from: env.EMAIL_FROM,
+    to: `${toName} <${toEmail}>`,
+    subject: "Sua senha foi alterada - Voxora",
+    html: `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#0f1923;color:#e2e8f0;border-radius:12px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:32px;">
+          <span style="font-size:24px;font-weight:900;color:#ffffff;letter-spacing:-1px;">Voxora</span>
+        </div>
+        <h1 style="font-size:22px;font-weight:700;margin:0 0 12px;color:#ffffff;">Senha alterada com sucesso</h1>
+        <p style="color:#94a3b8;line-height:1.6;margin:0 0 16px;">
+          Olá, <strong style="color:#e2e8f0;">${toName}</strong>. Confirmamos a alteração da senha da sua conta.
+        </p>
+        <p style="color:#94a3b8;line-height:1.6;margin:0 0 28px;">
+          Se você não reconhece esta ação, redefina sua senha imediatamente e entre em contato com o suporte.
+        </p>
+        <a href="${env.APP_URL}/login" style="display:inline-block;background:#2b8cee;color:#ffffff;font-weight:700;text-decoration:none;padding:14px 28px;border-radius:8px;font-size:15px;">
+          Ir para o login
+        </a>
+      </div>
+    `
+  });
+}
+
+async function verifyTurnstileToken(token: string): Promise<boolean> {
+  if (!turnstileSecretKey) return true;
+  try {
+    const response = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ secret: turnstileSecretKey, response: token })
+    });
+    const data = await response.json() as { success: boolean };
+    return data.success === true;
+  } catch {
+    return false;
+  }
+}
 const paymentWebhookSignatureSecret =
   env.PAYMENT_WEBHOOK_SIGNATURE_SECRET &&
   env.PAYMENT_WEBHOOK_SIGNATURE_SECRET.trim().length > 0
@@ -206,8 +362,10 @@ const prisma = new PrismaClient({
 type TranscriptionQueueData = {
   jobId: string;
   userId: string;
-  sourceObjectKey: string;
-  language: string;
+  taskType: "transcription" | "refresh-original" | "translation";
+  sourceObjectKey?: string;
+  language?: string;
+  sourceRevision?: number;
 };
 
 const transcriptionQueue = new Queue<TranscriptionQueueData>(env.TRANSCRIPTION_QUEUE, {
@@ -223,12 +381,22 @@ const transcriptionQueue = new Queue<TranscriptionQueueData>(env.TRANSCRIPTION_Q
 const registerBodySchema = z.object({
   name: z.string().min(2).max(120),
   email: z.string().email().max(180),
-  password: z.string().min(8).max(128)
+  password: z.string().min(8).max(128),
+  turnstileToken: z.string().optional()
 });
 
 const loginBodySchema = z.object({
   email: z.string().email().max(180),
   password: z.string().min(8).max(128)
+});
+
+const passwordResetRequestBodySchema = z.object({
+  email: z.string().trim().email().max(180)
+});
+
+const passwordResetConfirmBodySchema = z.object({
+  token: z.string().trim().min(20).max(191),
+  newPassword: z.string().min(8).max(128)
 });
 
 const refreshBodySchema = z.object({
@@ -334,7 +502,17 @@ const uploadPresignBodySchema = z.object({
 
 const createTranscriptionBodySchema = z.object({
   sourceObjectKey: z.string().min(10).max(500),
-  language: z.string().min(2).max(16).default("pt-BR")
+  language: z.string().min(2).max(16).default("pt-BR"),
+  features: z
+    .object({
+      diarization: z.boolean().default(true),
+      translationTargetLanguage: z.string().min(2).max(16).optional(),
+      generatePdf: z.boolean().default(true)
+    })
+    .default({
+      diarization: true,
+      generatePdf: true
+    })
 });
 
 const transcriptionListQuerySchema = z.object({
@@ -356,8 +534,64 @@ const uploadTokenParamsSchema = z.object({
 });
 
 const transcriptionDownloadQuerySchema = z.object({
-  format: z.enum(OUTPUT_FORMATS)
+  format: z.enum(OUTPUT_FORMATS),
+  variant: z.enum(TRANSCRIPT_VARIANTS).default("original")
 });
+
+const updateOriginalTranscriptBodySchema = z
+  .object({
+    segments: z
+      .array(
+        z.object({
+          segmentIndex: z.coerce.number().int().min(0),
+          startSec: z.string().nullable(),
+          endSec: z.string().nullable(),
+          text: z.string().min(1),
+          speakerLabel: z.string().max(120).nullable().optional(),
+          language: z.string().min(2).max(16).optional()
+        })
+      )
+      .min(1)
+  })
+  .superRefine((value, ctx) => {
+    const seen = new Set<number>();
+    for (let index = 0; index < value.segments.length; index += 1) {
+      const segment = value.segments[index];
+      if (segment.text.trim().length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["segments", index, "text"],
+          message: "Segment text cannot be empty."
+        });
+      }
+      if (seen.has(segment.segmentIndex)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["segments", index, "segmentIndex"],
+          message: "Segment indexes must be unique."
+        });
+      }
+      seen.add(segment.segmentIndex);
+      if (segment.startSec !== null && segment.endSec !== null) {
+        const start = Number(segment.startSec);
+        const end = Number(segment.endSec);
+        if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["segments", index, "endSec"],
+            message: "Segment timestamps are invalid."
+          });
+        }
+      }
+      if (segment.segmentIndex !== index) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["segments", index, "segmentIndex"],
+          message: "Segment indexes must be contiguous and sorted."
+        });
+      }
+    }
+  });
 
 type JwtTokenType = "access" | "refresh";
 type UploadTokenPayload = {
@@ -375,7 +609,9 @@ type PublicUser = {
   updatedAt: string;
 };
 type PublicTranscriptionOutput = {
-  format: "txt" | "srt";
+  format: "txt" | "srt" | "pdf";
+  variant: "original" | "translated";
+  language: string | null;
   objectKey: string;
   sizeBytes: number;
   createdAt: string;
@@ -388,6 +624,35 @@ type PublicTranscriptionChunk = {
   createdAt: string;
   updatedAt: string;
 };
+type PublicTranscriptSegment = {
+  id: string;
+  revision: number;
+  segmentIndex: number;
+  startSec: string | null;
+  endSec: string | null;
+  text: string;
+  speakerLabel: string | null;
+  speakerConfidence: string | null;
+  language: string;
+  kind: string;
+  status: "active";
+  createdAt: string;
+  updatedAt: string;
+};
+type PublicTranscript = {
+  id: string;
+  variant: "original" | "translated";
+  kind: "transcript" | "translation";
+  language: string;
+  status: "pending" | "processing" | "ready" | "failed" | "regenerating";
+  revision: number;
+  sourceRevision: number | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  publishedAt: string | null;
+  updatedAt: string;
+  segments: PublicTranscriptSegment[];
+};
 type PublicTranscriptionJob = {
   id: string;
   status:
@@ -399,6 +664,11 @@ type PublicTranscriptionJob = {
     | "failed";
   sourceObjectKey: string;
   language: string;
+  translationTargetLanguage: string | null;
+  diarizationEnabled: boolean;
+  generatePdf: boolean;
+  originalTranscriptStatus: "pending" | "processing" | "ready" | "failed" | "regenerating";
+  translatedTranscriptStatus: "pending" | "processing" | "ready" | "failed" | "regenerating" | null;
   durationSeconds: number | null;
   pricePerMinute: string;
   chargeAmount: string | null;
@@ -409,6 +679,10 @@ type PublicTranscriptionJob = {
   completedAt: string | null;
   outputs: PublicTranscriptionOutput[];
   chunks?: PublicTranscriptionChunk[];
+  transcripts?: {
+    original: PublicTranscript | null;
+    translated: PublicTranscript | null;
+  };
 };
 type PublicPayment = {
   id: string;
@@ -441,6 +715,7 @@ type UserAuthShape = {
   name: string;
   email: string;
   passwordHash: string;
+  sessionVersion: number;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -483,6 +758,10 @@ function encodeTokenPart(value: string) {
 
 function decodeTokenPart(value: string) {
   return Buffer.from(value, "base64url").toString("utf8");
+}
+
+function hashOpaqueToken(token: string) {
+  return createHmac("sha256", passwordResetTokenPepper).update(token, "utf8").digest("hex");
 }
 
 function safeCompare(value: string, expected: string) {
@@ -594,14 +873,31 @@ function inferMimeTypeByExtension(extension: string) {
   }
 }
 
+function parseOptionalDecimal(value: string | null) {
+  if (value === null) {
+    return null;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new Error(`Invalid decimal value '${value}'.`);
+  }
+
+  return new Prisma.Decimal(parsed.toFixed(3));
+}
+
 function serializeOutput(output: {
-  format: "txt" | "srt";
+  format: "txt" | "srt" | "pdf";
+  variant: "original" | "translated";
+  language: string | null;
   objectKey: string;
   sizeBytes: number;
   createdAt: Date;
 }): PublicTranscriptionOutput {
   return {
     format: output.format,
+    variant: output.variant,
+    language: output.language,
     objectKey: output.objectKey,
     sizeBytes: output.sizeBytes,
     createdAt: output.createdAt.toISOString()
@@ -626,6 +922,64 @@ function serializeChunk(chunk: {
   };
 }
 
+function serializeTranscriptSegment(segment: {
+  id: string;
+  revision: number;
+  segmentIndex: number;
+  startSec: Prisma.Decimal | null;
+  endSec: Prisma.Decimal | null;
+  text: string;
+  speakerLabel: string | null;
+  speakerConfidence: Prisma.Decimal | null;
+  language: string;
+  kind: string;
+  status: "active";
+  createdAt: Date;
+  updatedAt: Date;
+}): PublicTranscriptSegment {
+  return {
+    id: segment.id,
+    revision: segment.revision,
+    segmentIndex: segment.segmentIndex,
+    startSec: segment.startSec ? segment.startSec.toString() : null,
+    endSec: segment.endSec ? segment.endSec.toString() : null,
+    text: segment.text,
+    speakerLabel: segment.speakerLabel,
+    speakerConfidence: segment.speakerConfidence ? segment.speakerConfidence.toString() : null,
+    language: segment.language,
+    kind: segment.kind,
+    status: segment.status,
+    createdAt: segment.createdAt.toISOString(),
+    updatedAt: segment.updatedAt.toISOString()
+  };
+}
+
+function serializeTranscript(
+  transcript: Prisma.TranscriptionTranscriptGetPayload<{ include: { segments: true } }> | null
+): PublicTranscript | null {
+  if (!transcript) {
+    return null;
+  }
+
+  return {
+    id: transcript.id,
+    variant: transcript.variant,
+    kind: transcript.kind,
+    language: transcript.language,
+    status: transcript.status,
+    revision: transcript.revision,
+    sourceRevision: transcript.sourceRevision,
+    errorCode: transcript.errorCode,
+    errorMessage: transcript.errorMessage,
+    publishedAt: transcript.publishedAt ? transcript.publishedAt.toISOString() : null,
+    updatedAt: transcript.updatedAt.toISOString(),
+    segments: transcript.segments
+      .filter((segment) => segment.revision === transcript.revision)
+      .sort((a, b) => a.segmentIndex - b.segmentIndex)
+      .map((segment) => serializeTranscriptSegment(segment))
+  };
+}
+
 function serializeTranscriptionJob(
   job: Prisma.TranscriptionJobGetPayload<{ include: { outputs: true } }>
 ): PublicTranscriptionJob {
@@ -634,6 +988,11 @@ function serializeTranscriptionJob(
     status: job.status,
     sourceObjectKey: job.sourceObjectKey,
     language: job.language,
+    translationTargetLanguage: job.translationTargetLanguage,
+    diarizationEnabled: job.diarizationEnabled,
+    generatePdf: job.generatePdf,
+    originalTranscriptStatus: job.originalTranscriptStatus,
+    translatedTranscriptStatus: job.translatedTranscriptStatus,
     durationSeconds: job.durationSeconds,
     pricePerMinute: job.pricePerMinute.toString(),
     chargeAmount: job.chargeAmount ? job.chargeAmount.toString() : null,
@@ -647,13 +1006,22 @@ function serializeTranscriptionJob(
 }
 
 function serializeTranscriptionJobDetail(
-  job: Prisma.TranscriptionJobGetPayload<{ include: { outputs: true; chunks: true } }>
+  job: Prisma.TranscriptionJobGetPayload<{
+    include: { outputs: true; chunks: true; transcripts: { include: { segments: true } } };
+  }>
 ): PublicTranscriptionJob {
+  const originalTranscript = job.transcripts.find((transcript) => transcript.variant === "original") ?? null;
+  const translatedTranscript = job.transcripts.find((transcript) => transcript.variant === "translated") ?? null;
+
   return {
     ...serializeTranscriptionJob(job),
     chunks: job.chunks
       .sort((a, b) => a.chunkIndex - b.chunkIndex)
-      .map((chunk) => serializeChunk(chunk))
+      .map((chunk) => serializeChunk(chunk)),
+    transcripts: {
+      original: serializeTranscript(originalTranscript),
+      translated: serializeTranscript(translatedTranscript)
+    }
   };
 }
 
@@ -959,10 +1327,17 @@ function verifyPaymentWebhookAuth(params: {
   } as const;
 }
 
-function buildTranscriptionQueueOptions(jobId: string) {
+function buildTranscriptionQueueOptions(
+  jobId: string,
+  taskType: TranscriptionQueueData["taskType"],
+  sourceRevision?: number
+) {
   return {
-    jobId,
-    attempts: env.TRANSCRIPTION_MAX_ATTEMPTS,
+    jobId:
+      taskType === "transcription"
+        ? jobId
+        : `${jobId}:${taskType}:${sourceRevision ?? Date.now()}`,
+    attempts: taskType === "translation" ? 1 : env.TRANSCRIPTION_MAX_ATTEMPTS,
     backoff: {
       type: "exponential" as const,
       delay: env.TRANSCRIPTION_RETRY_DELAY_MS
@@ -1157,12 +1532,13 @@ async function approvePaymentAndCreditWallet(params: {
   });
 }
 
-function issueTokens(user: { id: string; email: string }) {
+function issueTokens(user: { id: string; email: string; sessionVersion: number }) {
   return {
     accessToken: app.jwt.sign(
       {
         sub: user.id,
         email: user.email,
+        sessionVersion: user.sessionVersion,
         tokenType: "access" as JwtTokenType
       },
       {
@@ -1173,6 +1549,7 @@ function issueTokens(user: { id: string; email: string }) {
       {
         sub: user.id,
         email: user.email,
+        sessionVersion: user.sessionVersion,
         tokenType: "refresh" as JwtTokenType
       },
       {
@@ -1188,6 +1565,16 @@ async function authenticate(request: FastifyRequest, reply: FastifyReply) {
     if (request.user.tokenType !== "access") {
       return reply.code(401).send({
         message: "Invalid token type."
+      });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: request.user.sub },
+      select: { sessionVersion: true }
+    });
+    if (!user || user.sessionVersion !== request.user.sessionVersion) {
+      return reply.code(401).send({
+        message: "Sessão expirada. Faça login novamente."
       });
     }
     return;
@@ -1247,9 +1634,37 @@ async function registerRoutes() {
     now: new Date().toISOString()
   }));
 
-  app.post("/v1/auth/register", { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (request, reply) => {
+  app.post("/v1/auth/register", {
+    config: {
+      rateLimit: {
+        max: 5,
+        timeWindow: "1 hour",
+        keyGenerator: (request) => request.ip
+      }
+    }
+  }, async (request, reply) => {
     const body = registerBodySchema.parse(request.body);
     const email = body.email.trim().toLowerCase();
+
+    // Block disposable email providers
+    const emailDomain = email.split("@")[1] ?? "";
+    if (DISPOSABLE_EMAIL_DOMAINS.has(emailDomain)) {
+      return reply.code(422).send({
+        message: "Este provedor de e-mail não é permitido. Use um e-mail pessoal ou corporativo."
+      });
+    }
+
+    // Verify Turnstile CAPTCHA token when secret key is configured
+    if (turnstileSecretKey) {
+      const token = body.turnstileToken ?? "";
+      if (!token) {
+        return reply.code(422).send({ message: "Verificação de segurança obrigatória." });
+      }
+      const valid = await verifyTurnstileToken(token);
+      if (!valid) {
+        return reply.code(422).send({ message: "Verificação de segurança inválida. Tente novamente." });
+      }
+    }
 
     const existing = await prisma.user.findUnique({
       where: { email },
@@ -1305,12 +1720,196 @@ async function registerRoutes() {
       throw error;
     }
 
+    // Generate email verification token
+    const verificationToken = randomBytes(32).toString("hex");
+    const verificationExpiresAt = new Date(
+      Date.now() + env.EMAIL_VERIFICATION_EXPIRES_HOURS * 60 * 60 * 1000
+    );
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        emailVerificationToken: verificationToken,
+        emailVerificationExpiresAt: verificationExpiresAt
+      }
+    });
+
+    // Send verification email (non-blocking — don't fail registration if email fails)
+    void sendVerificationEmail(user.email, user.name, verificationToken).catch((err) => {
+      app.log.error({ err }, "Failed to send verification email");
+    });
+
     const tokens = issueTokens(user);
     return reply.code(201).send({
       user: serializeUser(user),
       welcomeCredit: signupWelcomeCredit.toString(),
+      emailVerificationSent: emailTransporter !== null,
       ...tokens
     });
+  });
+
+  // Verify email endpoint
+  app.get("/v1/auth/verify-email", async (request, reply) => {
+    const { token } = (request.query as Record<string, string>);
+    if (!token || typeof token !== "string") {
+      return reply.code(400).send({ message: "Token de verificação inválido." });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { emailVerificationToken: token },
+      select: { id: true, emailVerifiedAt: true, emailVerificationExpiresAt: true }
+    });
+
+    if (!user) {
+      return reply.code(400).send({ message: "Token de verificação inválido ou já utilizado." });
+    }
+    if (user.emailVerifiedAt) {
+      return reply.send({ message: "E-mail já verificado." });
+    }
+    if (user.emailVerificationExpiresAt && user.emailVerificationExpiresAt < new Date()) {
+      return reply.code(400).send({ message: "Token expirado. Solicite um novo e-mail de verificação." });
+    }
+
+    // Keep the token in DB so the link remains idempotent (clicking again shows success)
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { emailVerifiedAt: new Date() }
+    });
+
+    return reply.send({ message: "E-mail verificado com sucesso." });
+  });
+
+  // Resend verification email
+  app.post("/v1/auth/resend-verification", {
+    config: { rateLimit: { max: 3, timeWindow: "1 hour", keyGenerator: (req) => req.ip } },
+    preHandler: [authenticate]
+  }, async (request, reply) => {
+    const userId = (request.user as unknown as { id: string }).id;
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, name: true, email: true, emailVerifiedAt: true }
+    });
+
+    if (!user) return reply.code(404).send({ message: "Usuário não encontrado." });
+    if (user.emailVerifiedAt) return reply.send({ message: "E-mail já verificado." });
+
+    const verificationToken = randomBytes(32).toString("hex");
+    const verificationExpiresAt = new Date(
+      Date.now() + env.EMAIL_VERIFICATION_EXPIRES_HOURS * 60 * 60 * 1000
+    );
+    await prisma.user.update({
+      where: { id: userId },
+      data: { emailVerificationToken: verificationToken, emailVerificationExpiresAt: verificationExpiresAt }
+    });
+
+    void sendVerificationEmail(user.email, user.name, verificationToken).catch((err) => {
+      app.log.error({ err }, "Failed to resend verification email");
+    });
+
+    return reply.send({ message: "E-mail de verificação reenviado." });
+  });
+
+  app.post("/v1/auth/request-password-reset", {
+    config: { rateLimit: { max: 3, timeWindow: "1 hour", keyGenerator: (req) => req.ip } }
+  }, async (request, reply) => {
+    const body = passwordResetRequestBodySchema.parse(request.body);
+    const email = body.email.trim().toLowerCase();
+    const genericMessage = "Se existir uma conta com este e-mail, enviaremos um link para redefinir a senha.";
+
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: { id: true, name: true, email: true }
+    });
+
+    if (!user) {
+      return reply.send({
+        message: genericMessage,
+        deliveryAvailable: emailTransporter !== null
+      });
+    }
+
+    const passwordResetToken = randomBytes(32).toString("hex");
+    const passwordResetTokenHash = hashOpaqueToken(passwordResetToken);
+    const passwordResetExpiresAt = new Date(
+      Date.now() + env.PASSWORD_RESET_EXPIRES_HOURS * 60 * 60 * 1000
+    );
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordResetToken: passwordResetTokenHash,
+        passwordResetExpiresAt
+      }
+    });
+
+    void sendPasswordResetEmail(user.email, user.name, passwordResetToken).catch((err) => {
+      app.log.error({ err }, "Failed to send password reset email");
+    });
+
+    return reply.send({
+      message: genericMessage,
+      deliveryAvailable: emailTransporter !== null
+    });
+  });
+
+  app.post("/v1/auth/reset-password", {
+    config: { rateLimit: { max: 5, timeWindow: "1 hour", keyGenerator: (req) => req.ip } }
+  }, async (request, reply) => {
+    const body = passwordResetConfirmBodySchema.parse(request.body);
+    const passwordResetTokenHash = hashOpaqueToken(body.token);
+
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { passwordResetToken: passwordResetTokenHash },
+          { passwordResetToken: body.token }
+        ]
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        sessionVersion: true,
+        passwordResetExpiresAt: true
+      }
+    });
+
+    if (!user) {
+      return reply.code(400).send({ message: "Link de redefinição inválido ou já utilizado." });
+    }
+
+    if (!user.passwordResetExpiresAt || user.passwordResetExpiresAt < new Date()) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          passwordResetToken: null,
+          passwordResetExpiresAt: null
+        }
+      });
+
+      return reply.code(400).send({ message: "Link expirado. Solicite uma nova recuperação de senha." });
+    }
+
+    const passwordHash = await argon2.hash(body.newPassword, {
+      type: argon2.argon2id
+    });
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash,
+        sessionVersion: {
+          increment: 1
+        },
+        passwordResetToken: null,
+        passwordResetExpiresAt: null
+      }
+    });
+
+    void sendPasswordChangedEmail(user.email, user.name).catch((err) => {
+      app.log.error({ err }, "Failed to send password changed email after password reset");
+    });
+
+    return reply.send({ message: "Senha redefinida com sucesso." });
   });
 
   app.post("/v1/auth/login", { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (request, reply) => {
@@ -1333,6 +1932,12 @@ async function registerRoutes() {
       });
     }
 
+    if (!user.emailVerifiedAt) {
+      return reply.code(403).send({
+        message: "Confirme seu e-mail antes de fazer login. Verifique sua caixa de entrada."
+      });
+    }
+
     const tokens = issueTokens(user);
     return reply.send({
       user: serializeUser(user),
@@ -1346,12 +1951,14 @@ async function registerRoutes() {
     let payload: {
       sub: string;
       email: string;
+      sessionVersion: number;
       tokenType: JwtTokenType;
     };
     try {
       payload = app.jwt.verify(body.refreshToken) as {
         sub: string;
         email: string;
+        sessionVersion: number;
         tokenType: JwtTokenType;
       };
     } catch {
@@ -1372,6 +1979,11 @@ async function registerRoutes() {
     if (!user) {
       return reply.code(401).send({
         message: "User not found."
+      });
+    }
+    if (user.sessionVersion !== payload.sessionVersion) {
+      return reply.code(401).send({
+        message: "Sessão expirada. Faça login novamente."
       });
     }
 
@@ -1433,6 +2045,11 @@ async function registerRoutes() {
         updateData.passwordHash = await argon2.hash(body.newPassword, {
           type: argon2.argon2id
         });
+        updateData.sessionVersion = {
+          increment: 1
+        };
+        updateData.passwordResetToken = null;
+        updateData.passwordResetExpiresAt = null;
       }
 
       if (Object.keys(updateData).length === 0) {
@@ -1446,6 +2063,13 @@ async function registerRoutes() {
           where: { id: user.id },
           data: updateData
         });
+
+        if (body.currentPassword && body.newPassword) {
+          void sendPasswordChangedEmail(updatedUser.email, updatedUser.name).catch((err) => {
+            app.log.error({ err }, "Failed to send password changed email after profile update");
+          });
+        }
+
         return reply.send(serializeUser(updatedUser));
       } catch (error) {
         if (error instanceof PrismaClientKnownRequestError && error.code === "P2002") {
@@ -2125,6 +2749,11 @@ async function registerRoutes() {
           status: "uploaded",
           sourceObjectKey,
           language: body.language,
+          translationTargetLanguage: body.features.translationTargetLanguage ?? null,
+          diarizationEnabled: body.features.diarization,
+          generatePdf: body.features.generatePdf,
+          originalTranscriptStatus: "pending",
+          translatedTranscriptStatus: body.features.translationTargetLanguage ? "pending" : null,
           pricePerMinute: new Prisma.Decimal("0.27")
         },
         include: {
@@ -2138,10 +2767,11 @@ async function registerRoutes() {
           {
             jobId: job.id,
             userId: request.user.sub,
+            taskType: "transcription",
             sourceObjectKey: job.sourceObjectKey,
             language: job.language
           },
-          buildTranscriptionQueueOptions(job.id)
+          buildTranscriptionQueueOptions(job.id, "transcription")
         );
       } catch (error) {
         app.log.error(error);
@@ -2237,7 +2867,12 @@ async function registerRoutes() {
         },
         include: {
           outputs: true,
-          chunks: true
+          chunks: true,
+          transcripts: {
+            include: {
+              segments: true
+            }
+          }
         }
       });
 
@@ -2339,16 +2974,19 @@ async function registerRoutes() {
         {
           jobId: job.id,
           userId: job.userId,
+          taskType: "transcription",
           sourceObjectKey: job.sourceObjectKey,
           language: job.language
         },
-        buildTranscriptionQueueOptions(job.id)
+        buildTranscriptionQueueOptions(job.id, "transcription")
       );
 
       const queuedJob = await prisma.transcriptionJob.update({
         where: { id: job.id },
         data: {
           status: "queued",
+          originalTranscriptStatus: "pending",
+          translatedTranscriptStatus: job.translationTargetLanguage ? "pending" : null,
           errorCode: null,
           errorMessage: null,
           completedAt: null
@@ -2372,6 +3010,353 @@ async function registerRoutes() {
     }
   );
 
+  app.put(
+    "/v1/transcriptions/:id/transcript/original",
+    {
+      preHandler: [authenticate]
+    },
+    async (request, reply) => {
+      const params = transcriptionParamsSchema.parse(request.params);
+      const body = updateOriginalTranscriptBodySchema.parse(request.body);
+
+      const job = await prisma.transcriptionJob.findFirst({
+        where: {
+          id: params.id,
+          userId: request.user.sub
+        },
+        include: {
+          outputs: true,
+          chunks: true,
+          transcripts: {
+            include: {
+              segments: true
+            }
+          }
+        }
+      });
+      if (!job) {
+        return reply.code(404).send({
+          message: "Transcription job not found."
+        });
+      }
+
+      const originalTranscript =
+        job.transcripts.find((transcript) => transcript.variant === "original") ?? null;
+      if (!originalTranscript) {
+        return reply.code(409).send({
+          message: "Original transcript is not available for editing yet."
+        });
+      }
+
+      const nextRevision = originalTranscript.revision + 1;
+
+      await prisma.$transaction(async (tx) => {
+        await tx.transcriptionTranscript.update({
+          where: { id: originalTranscript.id },
+          data: {
+            revision: nextRevision,
+            sourceRevision: nextRevision,
+            status: "regenerating",
+            errorCode: null,
+            errorMessage: null
+          }
+        });
+
+        await tx.transcriptSegment.createMany({
+          data: body.segments.map((segment) => ({
+            transcriptId: originalTranscript.id,
+            revision: nextRevision,
+            segmentIndex: segment.segmentIndex,
+            startSec: parseOptionalDecimal(segment.startSec),
+            endSec: parseOptionalDecimal(segment.endSec),
+            text: segment.text.trim(),
+            speakerLabel: segment.speakerLabel ?? null,
+            speakerConfidence: null,
+            language: segment.language ?? originalTranscript.language,
+            kind: "speech",
+            status: "active"
+          }))
+        });
+
+        if (job.translationTargetLanguage) {
+          await tx.transcriptionTranscript.upsert({
+            where: {
+              jobId_variant: {
+                jobId: job.id,
+                variant: "translated"
+              }
+            },
+            create: {
+              jobId: job.id,
+              variant: "translated",
+              kind: "translation",
+              language: job.translationTargetLanguage,
+              status: "regenerating",
+              revision: nextRevision,
+              sourceRevision: nextRevision
+            },
+            update: {
+              language: job.translationTargetLanguage,
+              status: "regenerating",
+              revision: nextRevision,
+              sourceRevision: nextRevision,
+              errorCode: null,
+              errorMessage: null
+            }
+          });
+        }
+
+        await tx.transcriptionJob.update({
+          where: { id: job.id },
+          data: {
+            originalTranscriptStatus: "regenerating",
+            translatedTranscriptStatus: job.translationTargetLanguage ? "regenerating" : null
+          }
+        });
+      });
+
+      try {
+        await transcriptionQueue.add(
+          TRANSCRIPTION_JOB_NAME,
+          {
+            jobId: job.id,
+            userId: job.userId,
+            taskType: "refresh-original",
+            sourceRevision: nextRevision
+          },
+          buildTranscriptionQueueOptions(job.id, "refresh-original", nextRevision)
+        );
+      } catch (error) {
+        request.log.error(error, "Could not enqueue original transcript refresh.");
+        await prisma.$transaction(async (tx) => {
+          await tx.transcriptionJob.update({
+            where: { id: job.id },
+            data: {
+              originalTranscriptStatus: "failed",
+              translatedTranscriptStatus: job.translationTargetLanguage ? "failed" : null
+            }
+          });
+          await tx.transcriptionTranscript.update({
+            where: { id: originalTranscript.id },
+            data: {
+              status: "failed",
+              errorCode: "QUEUE_ENQUEUE_FAILED",
+              errorMessage: "Could not enqueue original transcript refresh."
+            }
+          });
+          if (job.translationTargetLanguage) {
+            await tx.transcriptionTranscript.updateMany({
+              where: {
+                jobId: job.id,
+                variant: "translated"
+              },
+              data: {
+                status: "failed",
+                errorCode: "QUEUE_ENQUEUE_FAILED",
+                errorMessage: "Could not enqueue translation regeneration."
+              }
+            });
+          }
+        });
+
+        const failedJob = await prisma.transcriptionJob.findFirst({
+          where: {
+            id: job.id,
+            userId: request.user.sub
+          },
+          include: {
+            outputs: true,
+            chunks: true,
+            transcripts: {
+              include: {
+                segments: true
+              }
+            }
+          }
+        });
+
+        return reply.code(503).send({
+          message: "A revisao foi salva, mas nao foi possivel iniciar a regeneracao agora.",
+          job: serializeTranscriptionJobDetail(failedJob!)
+        });
+      }
+
+      const updatedJob = await prisma.transcriptionJob.findFirst({
+        where: {
+          id: job.id,
+          userId: request.user.sub
+        },
+        include: {
+          outputs: true,
+          chunks: true,
+          transcripts: {
+            include: {
+              segments: true
+            }
+          }
+        }
+      });
+
+      return reply.send({
+        job: serializeTranscriptionJobDetail(updatedJob!)
+      });
+    }
+  );
+
+  app.post(
+    "/v1/transcriptions/:id/translation/regenerate",
+    {
+      preHandler: [authenticate]
+    },
+    async (request, reply) => {
+      const params = transcriptionParamsSchema.parse(request.params);
+
+      const job = await prisma.transcriptionJob.findFirst({
+        where: {
+          id: params.id,
+          userId: request.user.sub
+        },
+        include: {
+          outputs: true,
+          chunks: true,
+          transcripts: {
+            include: {
+              segments: true
+            }
+          }
+        }
+      });
+      if (!job) {
+        return reply.code(404).send({
+          message: "Transcription job not found."
+        });
+      }
+      if (!job.translationTargetLanguage) {
+        return reply.code(409).send({
+          message: "This transcription does not have a target language configured."
+        });
+      }
+
+      const originalTranscript =
+        job.transcripts.find((transcript) => transcript.variant === "original") ?? null;
+      if (!originalTranscript) {
+        return reply.code(409).send({
+          message: "Original transcript is not available yet."
+        });
+      }
+
+      await prisma.$transaction(async (tx) => {
+        await tx.transcriptionTranscript.upsert({
+          where: {
+            jobId_variant: {
+              jobId: job.id,
+              variant: "translated"
+            }
+          },
+          create: {
+            jobId: job.id,
+            variant: "translated",
+            kind: "translation",
+            language: job.translationTargetLanguage!,
+            status: "pending",
+            revision: originalTranscript.revision,
+            sourceRevision: originalTranscript.revision
+          },
+          update: {
+            language: job.translationTargetLanguage!,
+            status: "pending",
+            revision: originalTranscript.revision,
+            sourceRevision: originalTranscript.revision,
+            errorCode: null,
+            errorMessage: null
+          }
+        });
+
+        await tx.transcriptionJob.update({
+          where: { id: job.id },
+          data: {
+            translatedTranscriptStatus: "pending"
+          }
+        });
+      });
+
+      try {
+        await transcriptionQueue.add(
+          TRANSCRIPTION_JOB_NAME,
+          {
+            jobId: job.id,
+            userId: job.userId,
+            taskType: "translation",
+            sourceRevision: originalTranscript.revision
+          },
+          buildTranscriptionQueueOptions(job.id, "translation", originalTranscript.revision)
+        );
+      } catch (error) {
+        request.log.error(error, "Could not enqueue translation regeneration.");
+        await prisma.$transaction(async (tx) => {
+          await tx.transcriptionJob.update({
+            where: { id: job.id },
+            data: {
+              translatedTranscriptStatus: "failed"
+            }
+          });
+          await tx.transcriptionTranscript.updateMany({
+            where: {
+              jobId: job.id,
+              variant: "translated"
+            },
+            data: {
+              status: "failed",
+              errorCode: "QUEUE_ENQUEUE_FAILED",
+              errorMessage: "Could not enqueue translation regeneration."
+            }
+          });
+        });
+
+        const failedJob = await prisma.transcriptionJob.findFirst({
+          where: {
+            id: job.id,
+            userId: request.user.sub
+          },
+          include: {
+            outputs: true,
+            chunks: true,
+            transcripts: {
+              include: {
+                segments: true
+              }
+            }
+          }
+        });
+
+        return reply.code(503).send({
+          message: "Nao foi possivel reagendar a traducao agora.",
+          job: serializeTranscriptionJobDetail(failedJob!)
+        });
+      }
+
+      const updatedJob = await prisma.transcriptionJob.findFirst({
+        where: {
+          id: job.id,
+          userId: request.user.sub
+        },
+        include: {
+          outputs: true,
+          chunks: true,
+          transcripts: {
+            include: {
+              segments: true
+            }
+          }
+        }
+      });
+
+      return reply.send({
+        job: serializeTranscriptionJobDetail(updatedJob!)
+      });
+    }
+  );
+
   app.get(
     "/v1/transcriptions/:id/download",
     {
@@ -2384,6 +3369,7 @@ async function registerRoutes() {
       const output = await prisma.jobOutput.findFirst({
         where: {
           format: query.format,
+          variant: query.variant,
           job: {
             id: params.id,
             userId: request.user.sub
@@ -2425,12 +3411,14 @@ async function registerRoutes() {
       const outputContent = await readFile(outputPath);
       if (query.format === "srt") {
         reply.type("application/x-subrip; charset=utf-8");
+      } else if (query.format === "pdf") {
+        reply.type("application/pdf");
       } else {
         reply.type("text/plain; charset=utf-8");
       }
       reply.header(
         "content-disposition",
-        `attachment; filename="transcription-${output.jobId}.${query.format}"`
+        `attachment; filename="transcription-${output.jobId}-${query.variant}.${query.format}"`
       );
       return reply.send(outputContent);
     }

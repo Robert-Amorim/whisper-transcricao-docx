@@ -22,7 +22,17 @@ export const LEDGER_TYPES = [
   "adjustment"
 ] as const;
 
-export const OUTPUT_FORMATS = ["txt", "srt"] as const;
+export const OUTPUT_FORMATS = ["txt", "srt", "pdf"] as const;
+export const TRANSCRIPT_VARIANTS = ["original", "translated"] as const;
+export const TRANSCRIPT_KINDS = ["transcript", "translation"] as const;
+export const TRANSCRIPT_STATUSES = [
+  "pending",
+  "processing",
+  "ready",
+  "failed",
+  "regenerating"
+] as const;
+export const TRANSCRIPT_SEGMENT_STATUSES = ["active"] as const;
 
 export const ACCEPTED_UPLOAD_EXTENSIONS = [
   "mp3",
@@ -53,4 +63,8 @@ export type JobStatus = (typeof JOB_STATUSES)[number];
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 export type LedgerType = (typeof LEDGER_TYPES)[number];
 export type OutputFormat = (typeof OUTPUT_FORMATS)[number];
+export type TranscriptVariant = (typeof TRANSCRIPT_VARIANTS)[number];
+export type TranscriptKind = (typeof TRANSCRIPT_KINDS)[number];
+export type TranscriptStatus = (typeof TRANSCRIPT_STATUSES)[number];
+export type TranscriptSegmentStatus = (typeof TRANSCRIPT_SEGMENT_STATUSES)[number];
 export type AcceptedUploadExtension = (typeof ACCEPTED_UPLOAD_EXTENSIONS)[number];

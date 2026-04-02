@@ -6,6 +6,7 @@
 |----------|---------|---------|-----------|
 | `DATABASE_URL` | API/Worker | `mysql://user:pass@host:3306/voxora` | Conexão MySQL |
 | `JWT_SECRET` | API | `(string aleatória ≥32 chars)` | Segredo para assinar tokens |
+| `PASSWORD_RESET_TOKEN_PEPPER` | API | `(string aleatória ≥32 chars)` | Pepper dedicado para hash/HMAC dos tokens de redefinição |
 | `REDIS_HOST` | API/Worker | `127.0.0.1` | Host do Redis |
 | `REDIS_PORT` | API/Worker | `6379` | Porta do Redis |
 | `REDIS_PASSWORD` | API/Worker | `(senha)` | Senha do Redis |
@@ -61,6 +62,7 @@
 
 - [ ] `NODE_ENV=production` definido
 - [ ] `JWT_SECRET` é uma string aleatória forte (≥32 chars)
+- [ ] `PASSWORD_RESET_TOKEN_PEPPER` é uma string aleatória forte e diferente de `JWT_SECRET`
 - [ ] `UPLOAD_SIGNING_SECRET` é uma string aleatória forte (≥32 chars)
 - [ ] `CORS_ALLOWED_ORIGINS` aponta para o domínio do frontend
 - [ ] `PAYMENT_PROVIDER_MODE=mercado_pago` com token de produção

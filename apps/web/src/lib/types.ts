@@ -8,11 +8,21 @@ export const JOB_STATUSES = [
 ] as const;
 
 export const PAYMENT_STATUSES = ["pending", "approved", "rejected", "expired"] as const;
-export const OUTPUT_FORMATS = ["txt", "srt"] as const;
+export const OUTPUT_FORMATS = ["txt", "srt", "pdf"] as const;
+export const TRANSCRIPT_VARIANTS = ["original", "translated"] as const;
+export const TRANSCRIPT_STATUSES = [
+  "pending",
+  "processing",
+  "ready",
+  "failed",
+  "regenerating"
+] as const;
 
 export type JobStatus = (typeof JOB_STATUSES)[number];
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 export type OutputFormat = (typeof OUTPUT_FORMATS)[number];
+export type TranscriptVariant = (typeof TRANSCRIPT_VARIANTS)[number];
+export type TranscriptStatus = (typeof TRANSCRIPT_STATUSES)[number];
 
 export type SessionTokens = {
   accessToken: string;
@@ -46,6 +56,8 @@ export type WalletLedgerEntry = {
 
 export type TranscriptionOutput = {
   format: OutputFormat;
+  variant: TranscriptVariant;
+  language: string | null;
   objectKey: string;
   sizeBytes: number;
   createdAt: string;
@@ -60,11 +72,47 @@ export type TranscriptionChunk = {
   updatedAt: string;
 };
 
+export type TranscriptSegment = {
+  id: string;
+  revision: number;
+  segmentIndex: number;
+  startSec: string | null;
+  endSec: string | null;
+  text: string;
+  speakerLabel: string | null;
+  speakerConfidence: string | null;
+  language: string;
+  kind: string;
+  status: "active";
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type TranscriptVariantDetail = {
+  id: string;
+  variant: TranscriptVariant;
+  kind: "transcript" | "translation";
+  language: string;
+  status: TranscriptStatus;
+  revision: number;
+  sourceRevision: number | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  publishedAt: string | null;
+  updatedAt: string;
+  segments: TranscriptSegment[];
+};
+
 export type TranscriptionJob = {
   id: string;
   status: JobStatus;
   sourceObjectKey: string;
   language: string;
+  translationTargetLanguage: string | null;
+  diarizationEnabled: boolean;
+  generatePdf: boolean;
+  originalTranscriptStatus: TranscriptStatus;
+  translatedTranscriptStatus: TranscriptStatus | null;
   durationSeconds: number | null;
   pricePerMinute: string;
   chargeAmount: string | null;
@@ -78,6 +126,10 @@ export type TranscriptionJob = {
 
 export type TranscriptionJobDetail = TranscriptionJob & {
   chunks?: TranscriptionChunk[];
+  transcripts: {
+    original: TranscriptVariantDetail | null;
+    translated: TranscriptVariantDetail | null;
+  };
 };
 
 export type AuthResponse = {
@@ -100,6 +152,27 @@ export type UploadPresignResponse = {
   requiredHeaders: Record<string, string>;
   maxBytes: number;
   expiresInSeconds: number;
+};
+
+export type CreateTranscriptionPayload = {
+  sourceObjectKey: string;
+  language: string;
+  features?: {
+    diarization?: boolean;
+    translationTargetLanguage?: string;
+    generatePdf?: boolean;
+  };
+};
+
+export type UpdateOriginalTranscriptPayload = {
+  segments: Array<{
+    segmentIndex: number;
+    startSec: string | null;
+    endSec: string | null;
+    text: string;
+    speakerLabel?: string | null;
+    language?: string;
+  }>;
 };
 
 export type PaymentSummary = {

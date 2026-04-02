@@ -20,12 +20,6 @@ export default function MarketingHeader() {
           >
             Como funciona
           </a>
-          <a
-            className="lp-header-link text-sm font-medium text-slate-600 transition-colors hover:text-primary dark:text-slate-100 dark:hover:text-white"
-            href="#precos"
-          >
-            Preços
-          </a>
           <Link
             className="lp-header-link text-sm font-medium text-slate-600 transition-colors hover:text-primary dark:text-slate-100 dark:hover:text-white"
             to="/login"

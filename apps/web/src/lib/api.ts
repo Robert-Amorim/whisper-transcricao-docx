@@ -2,6 +2,7 @@ import { clearSessionTokens, getSessionTokens, setSessionTokens } from "./sessio
 import type {
   AuthResponse,
   CardPaymentResponse,
+  CreateTranscriptionPayload,
   JobStatus,
   OutputFormat,
   PaymentStatus,
@@ -9,8 +10,10 @@ import type {
   PixPaymentResponse,
   PublicUser,
   SessionTokens,
+  TranscriptVariant,
   TranscriptionJob,
   TranscriptionJobDetail,
+  UpdateOriginalTranscriptPayload,
   UploadPresignRequest,
   UploadPresignResponse,
   WalletLedgerEntry,
@@ -199,10 +202,35 @@ export async function login(payload: { email: string; password: string }) {
   });
 }
 
-export async function register(payload: { name: string; email: string; password: string }) {
+export async function register(payload: { name: string; email: string; password: string; turnstileToken?: string }) {
   return requestJson<AuthResponse>("/v1/auth/register", {
     method: "POST",
     body: payload
+  });
+}
+
+export async function requestPasswordReset(payload: { email: string }) {
+  return requestJson<{ message: string; deliveryAvailable: boolean }>("/v1/auth/request-password-reset", {
+    method: "POST",
+    body: payload
+  });
+}
+
+export async function resetPassword(payload: { token: string; newPassword: string }) {
+  return requestJson<{ message: string }>("/v1/auth/reset-password", {
+    method: "POST",
+    body: payload
+  });
+}
+
+export async function verifyEmail(token: string) {
+  return requestJson<{ message: string }>(`/v1/auth/verify-email?token=${encodeURIComponent(token)}`, {});
+}
+
+export async function resendVerification() {
+  return requestJson<{ message: string }>("/v1/auth/resend-verification", {
+    method: "POST",
+    auth: true
   });
 }
 
@@ -331,7 +359,7 @@ export async function uploadToPresignedUrl(request: UploadPresignResponse, file:
   }
 }
 
-export async function createTranscription(payload: { sourceObjectKey: string; language: string }) {
+export async function createTranscription(payload: CreateTranscriptionPayload) {
   return requestJson<{ job: TranscriptionJob }>("/v1/transcriptions", {
     method: "POST",
     body: payload,
@@ -367,9 +395,34 @@ function getFilenameFromDisposition(headerValue: string | null, fallback: string
   return fallback;
 }
 
-export async function downloadTranscriptionOutput(jobId: string, format: OutputFormat) {
+export async function updateOriginalTranscript(jobId: string, payload: UpdateOriginalTranscriptPayload) {
+  return requestJson<{ job: TranscriptionJobDetail }>(
+    `/v1/transcriptions/${encodeURIComponent(jobId)}/transcript/original`,
+    {
+      method: "PUT",
+      body: payload,
+      auth: true
+    }
+  );
+}
+
+export async function regenerateTranslation(jobId: string) {
+  return requestJson<{ job: TranscriptionJobDetail }>(
+    `/v1/transcriptions/${encodeURIComponent(jobId)}/translation/regenerate`,
+    {
+      method: "POST",
+      auth: true
+    }
+  );
+}
+
+export async function downloadTranscriptionOutput(
+  jobId: string,
+  format: OutputFormat,
+  variant: TranscriptVariant = "original"
+) {
   const response = await requestRaw(
-    `/v1/transcriptions/${encodeURIComponent(jobId)}/download?format=${format}`,
+    `/v1/transcriptions/${encodeURIComponent(jobId)}/download?format=${format}&variant=${variant}`,
     {
       auth: true
     }
@@ -382,7 +435,7 @@ export async function downloadTranscriptionOutput(jobId: string, format: OutputF
   const blob = await response.blob();
   const fileName = getFilenameFromDisposition(
     response.headers.get("content-disposition"),
-    `transcricao-${jobId}.${format}`
+    `transcricao-${jobId}-${variant}.${format}`
   );
 
   return {
@@ -391,9 +444,13 @@ export async function downloadTranscriptionOutput(jobId: string, format: OutputF
   };
 }
 
-export async function getTranscriptionOutputText(jobId: string, format: OutputFormat) {
+export async function getTranscriptionOutputText(
+  jobId: string,
+  format: OutputFormat,
+  variant: TranscriptVariant = "original"
+) {
   const response = await requestRaw(
-    `/v1/transcriptions/${encodeURIComponent(jobId)}/download?format=${format}`,
+    `/v1/transcriptions/${encodeURIComponent(jobId)}/download?format=${format}&variant=${variant}`,
     {
       auth: true
     }

@@ -41,20 +41,6 @@ type CreditManagementPanelProps = {
 
 type TopUpMethod = "pix" | "credit_card";
 
-const mercadoPagoTestCards = [
-  {
-    brand: "Mastercard",
-    number: "5031 4332 1540 6351",
-    code: "123",
-    expiration: "11/30"
-  },
-  {
-    brand: "Visa",
-    number: "4235 6477 2802 5682",
-    code: "123",
-    expiration: "11/30"
-  }
-] as const;
 
 function getStatusLabel(status: PaymentSummary["status"]) {
   switch (status) {
@@ -301,8 +287,7 @@ export default function CreditManagementPanel({
             <div>
               <p className="text-sm font-semibold">Status detalhado da recarga</p>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                {getPaymentMethodLabel(selectedPayment.method)} • ID provedor{" "}
-                <span className="font-mono">{selectedPayment.providerPaymentId}</span>
+                {getPaymentMethodLabel(selectedPayment.method)}
               </p>
             </div>
             <span
@@ -385,16 +370,6 @@ export default function CreditManagementPanel({
                 />
               </div>
             ) : null}
-            {activePix.pix.providerMode === "mock" ? (
-              <button
-                type="button"
-                onClick={onConfirmMockPayment}
-                disabled={isConfirmingMockPayment}
-                className="min-h-0 rounded-lg border border-primary/40 bg-primary/10 px-3 py-2 text-xs font-semibold text-primary transition hover:bg-primary/20 disabled:opacity-60"
-              >
-                {isConfirmingMockPayment ? "Confirmando..." : "Confirmar pagamento (modo mock)"}
-              </button>
-            ) : null}
           </article>
         ) : (
           <div className="rounded-lg border border-dashed border-slate-300 px-3 py-4 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
@@ -409,52 +384,12 @@ export default function CreditManagementPanel({
             isSubmitting={isCreatingCardPayment}
             onSubmit={onCreateCardPayment}
           />
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
-            <p className="text-sm font-semibold">Cartões de teste recomendados</p>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Para simular aprovação no Mercado Pago, use e-mail
-              {" "}
-              <code className="rounded bg-slate-200 px-1 py-0.5 dark:bg-slate-800">
-                test@testuser.com
-              </code>
-              {" "}
-              e nome do titular
-              {" "}
-              <code className="rounded bg-slate-200 px-1 py-0.5 dark:bg-slate-800">APRO</code>
-              {" "}
-              com CPF
-              {" "}
-              <code className="rounded bg-slate-200 px-1 py-0.5 dark:bg-slate-800">
-                12345678909
-              </code>
-              .
-            </p>
-            <div className="mt-3 space-y-2">
-              {mercadoPagoTestCards.map((card) => (
-                <div
-                  key={card.brand}
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-3 text-xs dark:border-slate-800 dark:bg-slate-900"
-                >
-                  <p className="font-semibold text-slate-700 dark:text-slate-200">
-                    {card.brand}
-                  </p>
-                  <p className="mt-1 font-mono text-slate-500 dark:text-slate-400">
-                    {card.number}
-                  </p>
-                  <p className="text-slate-500 dark:text-slate-400">
-                    CVV {card.code} • Validade {card.expiration}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
         </div>
       )}
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h5 className="text-sm font-semibold">Últimos pagamentos</h5>
-          <span className="text-[10px] font-mono text-slate-400">GET /v1/payments</span>
         </div>
 
         {payments.length === 0 ? (

@@ -152,14 +152,9 @@ export default function JobsTable({
   return (
     <section className="col-span-8 space-y-4" id="jobs">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <h4 className="text-lg font-bold">Jobs recentes</h4>
-          <span className="rounded bg-slate-100 px-2 py-1 font-mono text-[10px] text-slate-400 dark:bg-slate-800">
-            GET /v1/transcriptions
-          </span>
-        </div>
+        <h4 className="font-display text-lg font-bold tracking-tight">Transcrições recentes</h4>
         {total > 0 && (
-          <span className="text-xs text-slate-500">{total} job{total !== 1 ? "s" : ""}</span>
+          <span className="font-mono text-xs text-slate-500">{total} job{total !== 1 ? "s" : ""}</span>
         )}
       </div>
 
@@ -172,14 +167,12 @@ export default function JobsTable({
         <table className="w-full border-collapse text-left">
           <thead>
             <tr className="bg-slate-50 dark:bg-slate-800/50">
-              <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Arquivo</th>
-              <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Idioma</th>
-              <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Criado em</th>
-              <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Status</th>
-              <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">
-                Progresso
-              </th>
-              <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Ações</th>
+              <th className="px-6 py-4 font-display text-xs font-semibold uppercase tracking-widest text-slate-500">Arquivo</th>
+              <th className="px-6 py-4 font-display text-xs font-semibold uppercase tracking-widest text-slate-500">Idioma</th>
+              <th className="px-6 py-4 font-display text-xs font-semibold uppercase tracking-widest text-slate-500">Criado em</th>
+              <th className="px-6 py-4 font-display text-xs font-semibold uppercase tracking-widest text-slate-500">Status</th>
+              <th className="px-6 py-4 font-display text-xs font-semibold uppercase tracking-widest text-slate-500">Progresso</th>
+              <th className="px-6 py-4 font-display text-xs font-semibold uppercase tracking-widest text-slate-500">Ações</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
@@ -214,9 +207,9 @@ export default function JobsTable({
                   const isRetrying = retryingJobIds.includes(row.id);
                   return (
                     <tr key={row.id}>
-                      <td className="px-6 py-4 text-sm font-medium">{row.sourceObjectKey}</td>
-                      <td className="px-6 py-4 text-sm text-slate-500">{row.language}</td>
-                      <td className="px-6 py-4 text-sm text-slate-500">{row.createdLabel}</td>
+                      <td className="px-6 py-4 font-body text-sm font-medium">{row.sourceObjectKey}</td>
+                      <td className="px-6 py-4 font-mono text-xs text-slate-500">{row.language}</td>
+                      <td className="px-6 py-4 font-mono text-xs text-slate-500">{row.createdLabel}</td>
                       <td className="px-6 py-4">
                         <span
                           className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${status.badgeClassName}`}
@@ -282,7 +275,7 @@ export default function JobsTable({
 
       {onPageChange && totalPages > 1 ? (
         <div className="flex items-center justify-between px-1 pt-1">
-          <span className="text-xs text-slate-500">
+          <span className="font-mono text-xs text-slate-500">
             Página {currentPage + 1} de {totalPages}
           </span>
           <div className="flex gap-2">

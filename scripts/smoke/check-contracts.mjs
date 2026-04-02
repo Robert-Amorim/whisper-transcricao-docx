@@ -20,7 +20,7 @@ function checkSharedContracts() {
     const shared = require(resolve("packages/shared/dist/index.js"));
 
     assert.equal(shared.TRANSCRIPTION_JOB_NAME, "transcription.process");
-    assert.deepEqual(shared.OUTPUT_FORMATS, ["txt", "srt"]);
+    assert.deepEqual(shared.OUTPUT_FORMATS, ["txt", "srt", "pdf"]);
     assert.ok(shared.JOB_STATUSES.includes("queued"));
     assert.ok(shared.JOB_STATUSES.includes("completed"));
     assert.ok(shared.ACCEPTED_UPLOAD_EXTENSIONS.includes("mp3"));
