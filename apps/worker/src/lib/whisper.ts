@@ -205,6 +205,32 @@ export function isDiarizeModel(model: string) {
   return model === "gpt-4o-transcribe-diarize";
 }
 
+/**
+ * Detects Whisper hallucination — a well-known failure mode where the model
+ * emits a single token (word, number, punctuation) repeated hundreds of times
+ * instead of real speech content. This happens with silence, low-quality audio,
+ * or when a repetitive token is fed back as the prompt for the next chunk.
+ *
+ * Detection heuristic: if any single token accounts for more than 50 % of all
+ * tokens in the text, treat the output as hallucinated.
+ */
+export function isHallucinatedText(text: string): boolean {
+  if (!text || text.trim().length === 0) return false;
+
+  const tokens = text.split(/[\s,;.!?]+/).filter((t) => t.length > 0);
+  // Need enough tokens to make the ratio meaningful
+  if (tokens.length < 8) return false;
+
+  const freq: Record<string, number> = {};
+  for (const token of tokens) {
+    const normalized = token.toLowerCase();
+    freq[normalized] = (freq[normalized] ?? 0) + 1;
+  }
+
+  const maxFreq = Math.max(...Object.values(freq));
+  return maxFreq / tokens.length > 0.5;
+}
+
 function normalizeDiarizedSegments(
   rawSegments: OpenAiDiarizedResponse["segments"],
   fullText: string,
