@@ -46,10 +46,10 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-background-dark px-6 py-10">
+    <main className="flex min-h-screen items-center justify-center bg-background-dark px-4 py-6 sm:px-6 sm:py-10">
       <section className="w-full max-w-5xl overflow-hidden rounded-[28px] border border-slate-800 bg-slate-950 shadow-2xl shadow-black/30">
         <div className="grid min-h-[620px] grid-cols-1 lg:grid-cols-[1.05fr_0.95fr]">
-          <article className="relative flex flex-col justify-between overflow-hidden border-b border-slate-800 bg-[radial-gradient(circle_at_top_left,_rgba(43,140,238,0.35),_transparent_38%),linear-gradient(160deg,_rgba(15,23,42,0.96),_rgba(2,6,23,1))] p-8 lg:border-b-0 lg:border-r">
+          <article className="relative flex flex-col justify-between overflow-hidden border-b border-slate-800 bg-[radial-gradient(circle_at_top_left,_rgba(43,140,238,0.35),_transparent_38%),linear-gradient(160deg,_rgba(15,23,42,0.96),_rgba(2,6,23,1))] p-6 sm:p-8 lg:border-b-0 lg:border-r">
             <div className="absolute inset-0 opacity-40">
               <div className="absolute left-8 top-10 h-24 w-24 rounded-full bg-primary/20 blur-3xl" />
               <div className="absolute bottom-0 right-0 h-48 w-48 translate-x-10 translate-y-10 rounded-full bg-cyan-400/10 blur-3xl" />
@@ -68,7 +68,7 @@ export default function ResetPasswordPage() {
 
               <div className="max-w-md">
                 <p className="mb-3 text-sm uppercase tracking-[0.24em] text-primary/80">Segurança de conta</p>
-                <h1 className="font-display text-4xl font-black leading-tight text-white">
+                <h1 className="font-display text-3xl font-black leading-tight text-white sm:text-4xl">
                   Crie uma nova senha e volte ao painel com tranquilidade.
                 </h1>
                 <p className="mt-5 text-sm leading-7 text-slate-300">
@@ -91,7 +91,7 @@ export default function ResetPasswordPage() {
             </div>
           </article>
 
-          <article className="flex items-center bg-slate-950 p-8">
+          <article className="flex items-center bg-slate-950 p-6 sm:p-8">
             <div className="w-full">
               {state === "success" ? (
                 <div className="rounded-3xl border border-emerald-500/20 bg-emerald-500/5 p-8 text-center">

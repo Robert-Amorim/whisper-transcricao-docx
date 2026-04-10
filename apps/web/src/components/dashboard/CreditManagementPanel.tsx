@@ -1,6 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import MercadoPagoCardTopUpForm from "./MercadoPagoCardTopUpForm";
-import { formatCurrency, formatDateTime } from "../../lib/transcriptions";
+import {
+  CARD_MIN_TOP_UP_BRL,
+  PIX_MIN_TOP_UP_BRL,
+  getTopUpMinimumAmount,
+  type TopUpMethod
+} from "../../lib/payments";
+import {
+  formatCurrency,
+  formatDateTime,
+  formatEstimatedMinutes,
+  formatPricePerMinuteLabel
+} from "../../lib/transcriptions";
 import type { PaymentSummary, PixPaymentResponse } from "../../lib/types";
 
 type CreditManagementPanelProps = {
@@ -26,9 +37,11 @@ type CreditManagementPanelProps = {
     paymentTypeId?: string;
     lastFourDigits?: string;
   }) => Promise<void>;
+  onCancelPixPayment: () => Promise<void>;
   payerEmail: string | null;
   isCreatingPayment: boolean;
   isCreatingCardPayment: boolean;
+  isCancellingPixPayment: boolean;
   isRefreshingData: boolean;
   activePix: PixPaymentResponse | null;
   onConfirmMockPayment: () => void;
@@ -39,8 +52,9 @@ type CreditManagementPanelProps = {
   onSelectedMethodChange: (method: TopUpMethod) => void;
 };
 
-type TopUpMethod = "pix" | "credit_card";
-
+function formatTopUpAmount(amount: number) {
+  return formatCurrency(amount.toFixed(2));
+}
 
 function getStatusLabel(status: PaymentSummary["status"]) {
   switch (status) {
@@ -54,6 +68,21 @@ function getStatusLabel(status: PaymentSummary["status"]) {
     default:
       return "Pendente";
   }
+}
+
+function isCancelledByUser(payment: Pick<PaymentSummary, "method" | "status" | "statusDetail">) {
+  return (
+    payment.method === "pix" &&
+    payment.status === "rejected" &&
+    payment.statusDetail === "Pagamento cancelado pelo usuário."
+  );
+}
+
+function getDisplayStatusLabel(payment: Pick<PaymentSummary, "method" | "status" | "statusDetail">) {
+  if (isCancelledByUser(payment)) {
+    return "Cancelado";
+  }
+  return getStatusLabel(payment.status);
 }
 
 function getStatusClassName(status: PaymentSummary["status"]) {
@@ -85,6 +114,10 @@ function getPaymentMethodLabel(method: PaymentSummary["method"]) {
 }
 
 function getStatusGuidance(payment: PaymentSummary, nowMs: number) {
+  if (isCancelledByUser(payment)) {
+    return "Este PIX foi cancelado e não deve mais ser pago. Gere um novo PIX se quiser continuar.";
+  }
+
   if (payment.status === "approved") {
     return "Recarga concluida. Os créditos já devem estar disponíveis na carteira.";
   }
@@ -145,9 +178,11 @@ export default function CreditManagementPanel({
   onAmountInputChange,
   onCreatePixPayment,
   onCreateCardPayment,
+  onCancelPixPayment,
   payerEmail,
   isCreatingPayment,
   isCreatingCardPayment,
+  isCancellingPixPayment,
   isRefreshingData,
   activePix,
   onConfirmMockPayment,
@@ -162,7 +197,10 @@ export default function CreditManagementPanel({
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
-    if (!activePix && payments.every((payment) => !payment.expiresAt)) {
+    if (
+      selectedMethod !== "pix" ||
+      (!activePix && payments.every((payment) => !payment.expiresAt))
+    ) {
       return;
     }
 
@@ -171,7 +209,7 @@ export default function CreditManagementPanel({
     }, 1000);
 
     return () => window.clearInterval(timer);
-  }, [activePix, payments]);
+  }, [activePix, payments, selectedMethod]);
 
   useEffect(() => {
     const preferredPaymentId = activePix?.payment.id ?? payments[0]?.id ?? null;
@@ -193,6 +231,27 @@ export default function CreditManagementPanel({
     const parsed = Number.parseFloat(amountInput.replace(",", "."));
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
   }, [amountInput]);
+  const selectedMinimumAmount = useMemo(
+    () => getTopUpMinimumAmount(selectedMethod),
+    [selectedMethod]
+  );
+
+  const estimatedMinutesForTopUp = useMemo(() => {
+    if (parsedAmount === null) {
+      return null;
+    }
+    return formatEstimatedMinutes(parsedAmount);
+  }, [parsedAmount]);
+
+  const latestPixPayment = useMemo(
+    () => payments.find((payment) => payment.method === "pix") ?? null,
+    [payments]
+  );
+
+  const latestCardPayment = useMemo(
+    () => payments.find((payment) => payment.method === "credit_card") ?? null,
+    [payments]
+  );
 
   const activePixRemaining = useMemo(() => {
     if (!activePix?.pix.expiresAt) {
@@ -202,18 +261,39 @@ export default function CreditManagementPanel({
   }, [activePix, nowMs]);
 
   const selectedPayment = useMemo(() => {
+    const fallbackByMethod = selectedMethod === "pix" ? latestPixPayment : latestCardPayment;
+
     if (!selectedPaymentId) {
-      return payments[0] ?? null;
+      return fallbackByMethod;
     }
-    return payments.find((payment) => payment.id === selectedPaymentId) ?? payments[0] ?? null;
-  }, [payments, selectedPaymentId]);
+
+    const explicitSelection = payments.find((payment) => payment.id === selectedPaymentId) ?? null;
+    if (!explicitSelection) {
+      return fallbackByMethod;
+    }
+
+    if (explicitSelection.method !== selectedMethod) {
+      return fallbackByMethod;
+    }
+
+    return explicitSelection;
+  }, [latestCardPayment, latestPixPayment, payments, selectedMethod, selectedPaymentId]);
+
+  useEffect(() => {
+    if (selectedMethod === "pix") {
+      setSelectedPaymentId(activePix?.payment.id ?? latestPixPayment?.id ?? null);
+      return;
+    }
+
+    setSelectedPaymentId(latestCardPayment?.id ?? null);
+  }, [activePix?.payment.id, latestCardPayment?.id, latestPixPayment?.id, selectedMethod]);
 
   return (
     <section
       id="creditos"
       className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900"
     >
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h4 className="text-base font-bold">Gerenciamento de créditos</h4>
           <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -229,10 +309,10 @@ export default function CreditManagementPanel({
         <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">
           Valor da recarga (BRL)
         </label>
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row">
           <input
             type="number"
-            min={1}
+            min={selectedMinimumAmount}
             step="0.01"
             value={amountInput}
             onChange={(event) => onAmountInputChange(event.target.value)}
@@ -243,10 +323,45 @@ export default function CreditManagementPanel({
             type="button"
             disabled={selectedMethod !== "pix" || isCreatingPayment}
             onClick={onCreatePixPayment}
-            className="min-h-0 rounded-lg bg-primary px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-primary/90 disabled:opacity-60"
+            className="min-h-0 rounded-lg bg-primary px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-primary/90 disabled:opacity-60 sm:w-auto"
           >
             {isCreatingPayment ? "Gerando..." : "Gerar PIX"}
           </button>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-medium">
+          <span className="rounded-full border border-sky-500/20 bg-sky-500/10 px-2.5 py-1 text-sky-700 dark:text-sky-200">
+            PIX minimo: {formatTopUpAmount(PIX_MIN_TOP_UP_BRL)}
+          </span>
+          <span className="rounded-full border border-violet-500/20 bg-violet-500/10 px-2.5 py-1 text-violet-700 dark:text-violet-200">
+            Cartao minimo: {formatTopUpAmount(CARD_MIN_TOP_UP_BRL)}
+          </span>
+        </div>
+        <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-300">
+          {parsedAmount !== null && parsedAmount < selectedMinimumAmount ? (
+            <span>
+              O minimo para{" "}
+              <strong className="text-slate-900 dark:text-white">
+                {selectedMethod === "pix" ? "PIX" : "cartao"}
+              </strong>{" "}
+              e{" "}
+              <strong className="text-slate-900 dark:text-white">
+                {formatTopUpAmount(selectedMinimumAmount)}
+              </strong>
+              .
+            </span>
+          ) : estimatedMinutesForTopUp ? (
+            <span>
+              Esta recarga equivale a cerca de{" "}
+              <strong className="text-slate-900 dark:text-white">{estimatedMinutesForTopUp}</strong>{" "}
+              de transcrição no preço atual de{" "}
+              <strong className="text-slate-900 dark:text-white">
+                {formatPricePerMinuteLabel()}/min
+              </strong>
+              .
+            </span>
+          ) : (
+            <span>Informe um valor para calcular a estimativa de minutos.</span>
+          )}
         </div>
       </div>
 
@@ -283,7 +398,7 @@ export default function CreditManagementPanel({
 
       {selectedPayment ? (
         <article className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <p className="text-sm font-semibold">Status detalhado da recarga</p>
               <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -293,7 +408,7 @@ export default function CreditManagementPanel({
             <span
               className={`rounded-full px-2 py-1 text-[11px] font-semibold ${getStatusClassName(selectedPayment.status)}`}
             >
-              {getStatusLabel(selectedPayment.status)}
+              {getDisplayStatusLabel(selectedPayment)}
             </span>
           </div>
 
@@ -338,7 +453,7 @@ export default function CreditManagementPanel({
               <span
                 className={`rounded-full px-2 py-1 text-[11px] font-semibold ${getStatusClassName(activePix.payment.status)}`}
               >
-                {getStatusLabel(activePix.payment.status)}
+                {getDisplayStatusLabel(activePix.payment)}
               </span>
             </div>
 
@@ -361,12 +476,20 @@ export default function CreditManagementPanel({
                 Abrir comprovante PIX
               </a>
             ) : null}
+            <button
+              type="button"
+              onClick={() => void onCancelPixPayment()}
+              disabled={isCancellingPixPayment}
+              className="inline-flex min-h-0 w-full items-center justify-center rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200 transition hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+            >
+              {isCancellingPixPayment ? "Cancelando..." : "Cancelar PIX"}
+            </button>
             {activePix.pix.qrCodeBase64 ? (
               <div className="mt-2 flex justify-center rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-950">
                 <img
                   alt="QR Code PIX"
                   src={`data:image/png;base64,${activePix.pix.qrCodeBase64}`}
-                  className="h-40 w-40"
+                  className="h-32 w-32 sm:h-40 sm:w-40"
                 />
               </div>
             ) : null}
@@ -378,8 +501,14 @@ export default function CreditManagementPanel({
         )
       ) : (
         <div className="space-y-3">
+          {activePix ? (
+            <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-3 text-sm text-amber-200">
+              Existe um PIX pendente em aberto. Você pode seguir com cartão normalmente, ou voltar para a aba PIX se quiser concluir esse QR Code.
+            </div>
+          ) : null}
           <MercadoPagoCardTopUpForm
             amount={parsedAmount}
+            minimumAmount={CARD_MIN_TOP_UP_BRL}
             payerEmail={payerEmail}
             isSubmitting={isCreatingCardPayment}
             onSubmit={onCreateCardPayment}
@@ -443,7 +572,7 @@ export default function CreditManagementPanel({
                   <span
                     className={`rounded-full px-2 py-1 text-[11px] font-semibold ${getStatusClassName(payment.status)}`}
                   >
-                    {getStatusLabel(payment.status)}
+                    {getDisplayStatusLabel(payment)}
                   </span>
                 </div>
               </button>

@@ -155,8 +155,8 @@ export default function LoginPage() {
 
   if (registeredEmail) {
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center bg-background-dark px-6">
-        <div className="w-full max-w-md rounded-xl border border-slate-800 bg-slate-900 p-8 text-center">
+      <main className="flex min-h-screen flex-col items-center justify-center bg-background-dark px-4 sm:px-6">
+        <div className="w-full max-w-md rounded-xl border border-slate-800 bg-slate-900 p-6 text-center sm:p-8">
           <div className="mb-6 flex items-center justify-center gap-2">
             <span className="material-symbols-outlined text-[28px] text-primary">graphic_eq</span>
             <span className="font-display text-xl font-bold text-white">Voxora</span>
@@ -181,8 +181,8 @@ export default function LoginPage() {
 
   if (passwordResetEmail) {
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center bg-background-dark px-6">
-        <div className="w-full max-w-md rounded-xl border border-slate-800 bg-slate-900 p-8 text-center">
+      <main className="flex min-h-screen flex-col items-center justify-center bg-background-dark px-4 sm:px-6">
+        <div className="w-full max-w-md rounded-xl border border-slate-800 bg-slate-900 p-6 text-center sm:p-8">
           <div className="mb-6 flex items-center justify-center gap-2">
             <span className="material-symbols-outlined text-[28px] text-primary">graphic_eq</span>
             <span className="font-display text-xl font-bold text-white">Voxora</span>
@@ -220,9 +220,9 @@ export default function LoginPage() {
 
   return (
     <main className="min-h-screen bg-background-light font-display text-slate-900 dark:bg-background-dark dark:text-slate-100">
-      <div className="flex min-h-screen items-center justify-center p-6">
-        <section className="grid w-full max-w-[1180px] grid-cols-1 items-stretch gap-8 lg:grid-cols-2">
-          <article className="flex flex-col justify-between rounded-xl border border-slate-200 bg-slate-800/20 p-8 dark:border-slate-800 dark:bg-primary/5 lg:min-h-[690px]">
+      <div className="flex min-h-screen items-center justify-center p-4 sm:p-6">
+        <section className="grid w-full max-w-[1180px] grid-cols-1 items-stretch gap-6 lg:grid-cols-2 lg:gap-8">
+          <article className="flex flex-col justify-between rounded-xl border border-slate-200 bg-slate-800/20 p-6 dark:border-slate-800 dark:bg-primary/5 sm:p-8 lg:min-h-[690px]">
             <div>
               <div className="mb-8 flex items-center gap-3">
                 <div className="rounded-lg bg-primary p-2">
@@ -230,7 +230,7 @@ export default function LoginPage() {
                 </div>
                 <h1 className="text-3xl font-bold tracking-tight">Voxora</h1>
               </div>
-              <h2 className="mb-6 text-4xl font-extrabold leading-tight">
+              <h2 className="mb-6 text-3xl font-extrabold leading-tight sm:text-4xl">
                 O Som da <span className="text-primary">Clareza</span>
               </h2>
 
@@ -330,7 +330,7 @@ export default function LoginPage() {
                 </button>
               </div>
 
-              <form className="flex h-full flex-col justify-between p-8" onSubmit={handleSubmit}>
+              <form className="flex h-full flex-col justify-between p-6 sm:p-8" onSubmit={handleSubmit}>
                 <div className="space-y-4">
                   {isForgotPassword ? (
                     <div className="rounded-2xl border border-primary/10 bg-primary/5 p-4">
@@ -370,7 +370,7 @@ export default function LoginPage() {
 
                   {!isForgotPassword ? (
                     <div className="space-y-2">
-                      <div className="flex justify-between">
+                      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                         <label className="text-sm font-medium">Senha</label>
                         {mode === "login" ? (
                           <button

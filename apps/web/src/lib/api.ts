@@ -1,5 +1,9 @@
 import { clearSessionTokens, getSessionTokens, setSessionTokens } from "./session";
 import type {
+  AdminSupportSummary,
+  AdminSupportThreadDetail,
+  AdminUserDetail,
+  AdminUserListItem,
   AuthResponse,
   CardPaymentResponse,
   CreateTranscriptionPayload,
@@ -10,6 +14,12 @@ import type {
   PixPaymentResponse,
   PublicUser,
   SessionTokens,
+  SupportMessageDeliveryChannel,
+  SupportSummary,
+  SupportThread,
+  SupportThreadCategory,
+  SupportThreadDetail,
+  SupportThreadStatus,
   TranscriptVariant,
   TranscriptionJob,
   TranscriptionJobDetail,
@@ -26,7 +36,7 @@ const API_BASE_URL = (
 ).replace(/\/+$/, "");
 
 type RequestOptions = {
-  method?: "GET" | "POST" | "PUT";
+  method?: "GET" | "POST" | "PUT" | "PATCH";
   body?: unknown;
   headers?: Record<string, string>;
   auth?: boolean;
@@ -36,6 +46,10 @@ type RequestOptions = {
 
 type ApiErrorBody = {
   message?: string;
+  issues?: {
+    formErrors?: string[];
+    fieldErrors?: Record<string, string[] | undefined>;
+  };
   [key: string]: unknown;
 };
 
@@ -168,6 +182,11 @@ async function requestRaw(path: string, options: RequestOptions = {}): Promise<R
       token = refreshed.accessToken;
       headers.set("authorization", `Bearer ${token}`);
       response = await execute();
+    } else {
+      // Both tokens expired — throw 401 so each call-site's catch block
+      // can call navigate("/login"). Using window.location.replace here
+      // conflicts with React Router's navigate() and corrupts its state.
+      throw new ApiError("Sessao expirada. Faca login novamente.", 401);
     }
   }
 
@@ -184,6 +203,21 @@ async function requestJson<T>(path: string, options: RequestOptions = {}) {
 
 export function getErrorMessage(error: unknown, fallback: string) {
   if (error instanceof ApiError) {
+    const issues = (error.details as ApiErrorBody | undefined)?.issues;
+    const formError = issues?.formErrors?.find(Boolean);
+    if (formError) {
+      return formError;
+    }
+
+    if (issues?.fieldErrors) {
+      for (const messages of Object.values(issues.fieldErrors)) {
+        const message = messages?.find(Boolean);
+        if (message) {
+          return message;
+        }
+      }
+    }
+
     return error.message;
   }
   if (error instanceof TypeError && /fetch|network/i.test(error.message)) {
@@ -253,6 +287,168 @@ export async function updateMe(payload: {
   });
 }
 
+export async function listSupportTickets(params?: { limit?: number; offset?: number; status?: SupportThreadStatus }) {
+  const query = new URLSearchParams({ limit: String(params?.limit ?? 20) });
+  if (params?.offset) query.set("offset", String(params.offset));
+  if (params?.status) query.set("status", params.status);
+  return requestJson<{ items: SupportThread[]; total: number; hasMore: boolean }>(
+    `/v1/support/tickets?${query.toString()}`,
+    { auth: true }
+  );
+}
+
+export async function getSupportSummary() {
+  return requestJson<SupportSummary>("/v1/support/summary", {
+    auth: true
+  });
+}
+
+export async function createSupportTicket(payload: {
+  category: SupportThreadCategory;
+  subject: string;
+  message: string;
+}) {
+  return requestJson<{ thread: SupportThreadDetail }>("/v1/support/tickets", {
+    method: "POST",
+    body: payload,
+    auth: true
+  });
+}
+
+export async function getSupportTicket(threadId: string) {
+  return requestJson<{ thread: SupportThreadDetail }>(`/v1/support/tickets/${encodeURIComponent(threadId)}`, {
+    auth: true
+  });
+}
+
+export async function createSupportTicketMessage(threadId: string, payload: { body: string }) {
+  return requestJson<{ thread: SupportThreadDetail }>(
+    `/v1/support/tickets/${encodeURIComponent(threadId)}/messages`,
+    {
+      method: "POST",
+      body: payload,
+      auth: true
+    }
+  );
+}
+
+export async function createPublicSupportRequest(payload: {
+  name: string;
+  email: string;
+  category: SupportThreadCategory;
+  subject: string;
+  message: string;
+}) {
+  return requestJson<{ message: string }>("/v1/support/public-requests", {
+    method: "POST",
+    body: payload
+  });
+}
+
+export async function getAdminSupportSummary() {
+  return requestJson<AdminSupportSummary>("/v1/admin/support/summary", {
+    auth: true
+  });
+}
+
+export async function listAdminSupportTickets(params?: {
+  limit?: number;
+  offset?: number;
+  status?: SupportThreadStatus;
+  channel?: SupportThread["channel"];
+  category?: SupportThreadCategory;
+  q?: string;
+  assignee?: "me" | "unassigned";
+}) {
+  const query = new URLSearchParams({ limit: String(params?.limit ?? 20) });
+  if (params?.offset) query.set("offset", String(params.offset));
+  if (params?.status) query.set("status", params.status);
+  if (params?.channel) query.set("channel", params.channel);
+  if (params?.category) query.set("category", params.category);
+  if (params?.q) query.set("q", params.q);
+  if (params?.assignee) query.set("assignee", params.assignee);
+  return requestJson<{ items: SupportThread[]; total: number; hasMore: boolean }>(
+    `/v1/admin/tickets?${query.toString()}`,
+    { auth: true }
+  );
+}
+
+export async function getAdminSupportTicket(threadId: string) {
+  return requestJson<{ thread: AdminSupportThreadDetail }>(`/v1/admin/tickets/${encodeURIComponent(threadId)}`, {
+    auth: true
+  });
+}
+
+export async function createAdminSupportMessage(
+  threadId: string,
+  payload: {
+    body: string;
+    deliveryChannel?: SupportMessageDeliveryChannel;
+    isPublic?: boolean;
+  }
+) {
+  return requestJson<{ thread: AdminSupportThreadDetail }>(
+    `/v1/admin/tickets/${encodeURIComponent(threadId)}/messages`,
+    {
+      method: "POST",
+      body: payload,
+      auth: true
+    }
+  );
+}
+
+export async function createAdminSupportNote(threadId: string, payload: { body: string }) {
+  return requestJson<{ thread: AdminSupportThreadDetail }>(
+    `/v1/admin/tickets/${encodeURIComponent(threadId)}/notes`,
+    {
+      method: "POST",
+      body: payload,
+      auth: true
+    }
+  );
+}
+
+export async function updateAdminSupportTicket(
+  threadId: string,
+  payload: { status?: SupportThreadStatus; assigneeUserId?: string | null }
+) {
+  return requestJson<{ thread: AdminSupportThreadDetail }>(
+    `/v1/admin/tickets/${encodeURIComponent(threadId)}`,
+    {
+      method: "PATCH",
+      body: payload,
+      auth: true
+    }
+  );
+}
+
+export async function linkAdminSupportTicketUser(threadId: string, payload: { userId: string }) {
+  return requestJson<{ thread: AdminSupportThreadDetail }>(
+    `/v1/admin/tickets/${encodeURIComponent(threadId)}/link-user`,
+    {
+      method: "PATCH",
+      body: payload,
+      auth: true
+    }
+  );
+}
+
+export async function listAdminUsers(params?: { limit?: number; offset?: number; q?: string }) {
+  const query = new URLSearchParams({ limit: String(params?.limit ?? 20) });
+  if (params?.offset) query.set("offset", String(params.offset));
+  if (params?.q) query.set("q", params.q);
+  return requestJson<{ items: AdminUserListItem[]; total: number; hasMore: boolean }>(
+    `/v1/admin/users?${query.toString()}`,
+    { auth: true }
+  );
+}
+
+export async function getAdminUser(userId: string) {
+  return requestJson<AdminUserDetail>(`/v1/admin/users/${encodeURIComponent(userId)}`, {
+    auth: true
+  });
+}
+
 export async function getWallet() {
   return requestJson<WalletSummary>("/v1/wallet", {
     auth: true
@@ -314,6 +510,16 @@ export async function createCardPayment(payload: {
 export async function confirmPixPayment(paymentId: string) {
   return requestJson<{ payment: PaymentSummary; credited: boolean }>(
     `/v1/payments/${encodeURIComponent(paymentId)}/confirm`,
+    {
+      method: "POST",
+      auth: true
+    }
+  );
+}
+
+export async function cancelPixPayment(paymentId: string) {
+  return requestJson<{ payment: PaymentSummary }>(
+    `/v1/payments/${encodeURIComponent(paymentId)}/cancel`,
     {
       method: "POST",
       auth: true

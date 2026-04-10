@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 export default function HeroSection() {
   return (
     <section className="lp-hero-section mx-auto flex w-full max-w-7xl flex-col items-center px-6 py-16 text-center md:py-24 lg:py-32">
-      <h1 className="lp-hero-title mb-8 max-w-4xl text-5xl font-black leading-[1.1] tracking-tight text-slate-900 dark:text-white md:text-6xl lg:text-7xl">
+      <h1 className="lp-hero-title mb-8 max-w-4xl text-4xl font-black leading-[1.1] tracking-tight text-slate-900 dark:text-white sm:text-5xl md:text-6xl lg:text-7xl">
         Transcrição de áudio com{" "}
         <span className="bg-gradient-to-r from-primary to-blue-400 bg-clip-text text-transparent">
           precisão humana
@@ -36,7 +36,7 @@ export default function HeroSection() {
             <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-slate-700">
               <div className="absolute left-0 top-0 h-full w-2/3 rounded-full bg-primary" />
             </div>
-            <span className="font-mono text-sm text-slate-400">04:23 / 06:45</span>
+            <span className="hidden font-mono text-sm text-slate-400 sm:inline">04:23 / 06:45</span>
           </div>
 
           {/* Waveform bars */}
@@ -52,7 +52,7 @@ export default function HeroSection() {
 
           {/* Transcription preview */}
           <div className="space-y-3 px-6 pb-6 text-left">
-            <div className="flex gap-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:gap-4">
               <span className="w-20 shrink-0 font-mono text-xs font-bold uppercase tracking-wider text-primary">
                 Falante A
               </span>
@@ -60,7 +60,7 @@ export default function HeroSection() {
                 Então, a ideia principal é garantir que a transcrição seja precisa e entregue no prazo...
               </p>
             </div>
-            <div className="flex gap-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:gap-4">
               <span className="w-20 shrink-0 font-mono text-xs font-bold uppercase tracking-wider text-slate-500">
                 Falante B
               </span>
@@ -68,7 +68,7 @@ export default function HeroSection() {
                 Exatamente. A precisão em múltiplos idiomas é o diferencial chave aqui.
               </p>
             </div>
-            <div className="flex gap-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:gap-4">
               <span className="w-20 shrink-0 font-mono text-xs font-bold uppercase tracking-wider text-primary">
                 Falante A
               </span>

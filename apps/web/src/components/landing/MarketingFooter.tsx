@@ -11,7 +11,7 @@ export default function MarketingFooter() {
           <span className="font-display font-bold text-slate-900 dark:text-white">Voxora</span>
         </div>
 
-        <nav className="flex items-center gap-6">
+        <nav className="flex flex-wrap items-center justify-center gap-4 md:gap-6">
           <a
             href="#como-funciona"
             className="font-body text-sm text-slate-500 transition-colors hover:text-primary dark:text-slate-400 dark:hover:text-primary"
@@ -29,6 +29,12 @@ export default function MarketingFooter() {
             className="font-body text-sm text-slate-500 transition-colors hover:text-primary dark:text-slate-400 dark:hover:text-primary"
           >
             Criar conta
+          </Link>
+          <Link
+            to="/contato"
+            className="font-body text-sm text-slate-500 transition-colors hover:text-primary dark:text-slate-400 dark:hover:text-primary"
+          >
+            Contato
           </Link>
         </nav>
 

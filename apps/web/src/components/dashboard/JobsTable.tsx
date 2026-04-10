@@ -1,5 +1,10 @@
 import { Link } from "react-router-dom";
-import { formatDateTime, getFileNameFromObjectKey, getStatusTone } from "../../lib/transcriptions";
+import {
+  formatDateTime,
+  getFileNameFromObjectKey,
+  getStatusTone,
+  getTranscriptionEtaInfo
+} from "../../lib/transcriptions";
 import type { JobStatus, TranscriptionJob } from "../../lib/types";
 
 type DashboardStatusInfo = {
@@ -93,6 +98,7 @@ type DashboardJobRow = {
   language: string;
   createdLabel: string;
   status: JobStatus;
+  etaLabel: string | null;
   actionIcon: string;
   detailsHref?: string;
 };
@@ -139,19 +145,23 @@ export default function JobsTable({
   pageSize = 20
 }: JobsTableProps) {
   const totalPages = total > 0 ? Math.ceil(total / pageSize) : 1;
-  const tableRows: DashboardJobRow[] = jobs.map((job) => ({
-    id: job.id,
-    sourceObjectKey: getFileNameFromObjectKey(job.sourceObjectKey),
-    language: job.language,
-    createdLabel: formatDateTime(job.createdAt),
-    status: job.status,
-    actionIcon: getActionIconByStatus(job.status),
-    detailsHref: `/transcricoes/${job.id}`
-  }));
+  const tableRows: DashboardJobRow[] = jobs.map((job) => {
+    const eta = getTranscriptionEtaInfo(job);
+    return {
+      id: job.id,
+      sourceObjectKey: getFileNameFromObjectKey(job.sourceObjectKey),
+      language: job.language,
+      createdLabel: formatDateTime(job.createdAt),
+      status: job.status,
+      etaLabel: eta?.headline ?? null,
+      actionIcon: getActionIconByStatus(job.status),
+      detailsHref: `/transcricoes/${job.id}`
+    };
+  });
 
   return (
-    <section className="col-span-8 space-y-4" id="jobs">
-      <div className="flex items-center justify-between">
+    <section className="space-y-4 xl:col-span-8" id="jobs">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h4 className="font-display text-lg font-bold tracking-tight">Transcrições recentes</h4>
         {total > 0 && (
           <span className="font-mono text-xs text-slate-500">{total} job{total !== 1 ? "s" : ""}</span>
@@ -164,68 +174,61 @@ export default function JobsTable({
             {feedbackMessage}
           </p>
         ) : null}
-        <table className="w-full border-collapse text-left">
-          <thead>
-            <tr className="bg-slate-50 dark:bg-slate-800/50">
-              <th className="px-6 py-4 font-display text-xs font-semibold uppercase tracking-widest text-slate-500">Arquivo</th>
-              <th className="px-6 py-4 font-display text-xs font-semibold uppercase tracking-widest text-slate-500">Idioma</th>
-              <th className="px-6 py-4 font-display text-xs font-semibold uppercase tracking-widest text-slate-500">Criado em</th>
-              <th className="px-6 py-4 font-display text-xs font-semibold uppercase tracking-widest text-slate-500">Status</th>
-              <th className="px-6 py-4 font-display text-xs font-semibold uppercase tracking-widest text-slate-500">Progresso</th>
-              <th className="px-6 py-4 font-display text-xs font-semibold uppercase tracking-widest text-slate-500">Ações</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-            {loadState === "loading" ? (
-              <tr>
-                <td className="px-6 py-6 text-sm text-slate-500" colSpan={6}>
-                  Carregando transcrições...
-                </td>
-              </tr>
-            ) : null}
+        <div className="space-y-3 p-4 md:hidden">
+          {loadState === "loading" ? (
+            <p className="rounded-xl border border-dashed border-slate-300 px-4 py-6 text-sm text-slate-500 dark:border-slate-700">
+              Carregando transcrições...
+            </p>
+          ) : null}
 
-            {loadState === "error" ? (
-              <tr>
-                <td className="px-6 py-6 text-sm text-red-500" colSpan={6}>
-                  {loadError}
-                </td>
-              </tr>
-            ) : null}
+          {loadState === "error" ? (
+            <p className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-6 text-sm text-red-500">
+              {loadError}
+            </p>
+          ) : null}
 
-            {loadState === "ready" && tableRows.length === 0 ? (
-              <tr>
-                <td className="px-6 py-6 text-sm text-slate-500" colSpan={6}>
-                  Nenhuma transcrição encontrada. Crie a primeira em "Nova transcrição".
-                </td>
-              </tr>
-            ) : null}
+          {loadState === "ready" && tableRows.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-slate-300 px-4 py-6 text-sm text-slate-500 dark:border-slate-700">
+              Nenhuma transcrição encontrada. Crie a primeira em "Nova transcrição".
+            </p>
+          ) : null}
 
-            {loadState === "ready"
-              ? tableRows.map((row) => {
-                  const status = getStatusPresentation(row.status);
-                  const isWaiting = row.status === "uploaded";
-                  const isRetrying = retryingJobIds.includes(row.id);
-                  return (
-                    <tr key={row.id}>
-                      <td className="px-6 py-4 font-body text-sm font-medium">{row.sourceObjectKey}</td>
-                      <td className="px-6 py-4 font-mono text-xs text-slate-500">{row.language}</td>
-                      <td className="px-6 py-4 font-mono text-xs text-slate-500">{row.createdLabel}</td>
-                      <td className="px-6 py-4">
-                        <span
-                          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${status.badgeClassName}`}
-                        >
-                          {getStatusTone(row.status) === "processing" ? (
-                            <span className="size-1.5 animate-pulse rounded-full bg-blue-500" />
-                          ) : null}
-                          {status.label}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        {isWaiting ? (
-                          <span className="text-xs italic text-slate-400">Aguardando...</span>
-                        ) : (
+          {loadState === "ready"
+            ? tableRows.map((row) => {
+                const status = getStatusPresentation(row.status);
+                const isWaiting = row.status === "uploaded";
+                const isRetrying = retryingJobIds.includes(row.id);
+                return (
+                  <article
+                    key={row.id}
+                    className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-800/40"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="break-words font-body text-sm font-semibold leading-snug">
+                          {row.sourceObjectKey}
+                        </p>
+                        <p className="mt-1 break-words font-mono text-[11px] text-slate-500">
+                          {row.language} · {row.createdLabel}
+                        </p>
+                      </div>
+                      <span
+                        className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${status.badgeClassName}`}
+                      >
+                        {getStatusTone(row.status) === "processing" ? (
+                          <span className="size-1.5 animate-pulse rounded-full bg-blue-500" />
+                        ) : null}
+                        {status.label}
+                      </span>
+                    </div>
+
+                    <div className="mt-4 space-y-1.5">
+                      {isWaiting ? (
+                        <span className="text-xs italic text-slate-400">Aguardando...</span>
+                      ) : (
+                        <>
                           <div className="flex items-center gap-2">
-                            <div className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
                               <div
                                 className={`h-full ${status.progressBarClassName}`}
                                 style={{ width: `${status.progressPercent}%` }}
@@ -235,46 +238,158 @@ export default function JobsTable({
                               {status.progressLabel}
                             </span>
                           </div>
-                        )}
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          {row.status === "failed" ? (
-                            <button
-                              type="button"
-                              onClick={() => onRetryFailedJob(row.id)}
-                              disabled={isRetrying}
-                              className="inline-flex min-h-0 items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary transition hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              <span className="material-symbols-outlined text-base leading-none">refresh</span>
-                              {isRetrying ? "Reenfileirando..." : "Tentar novamente"}
-                            </button>
-                          ) : null}
+                          {row.etaLabel ? <p className="text-[11px] text-slate-400">{row.etaLabel}</p> : null}
+                        </>
+                      )}
+                    </div>
 
-                          {row.detailsHref ? (
-                            <Link
-                              to={row.detailsHref}
-                              className="rounded p-1 text-slate-400 transition hover:bg-slate-100 hover:text-primary dark:hover:bg-slate-800"
-                            >
-                              <span className="material-symbols-outlined">{row.actionIcon}</span>
-                            </Link>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {row.status === "failed" ? (
+                        <button
+                          type="button"
+                          onClick={() => onRetryFailedJob(row.id)}
+                          disabled={isRetrying}
+                          className="inline-flex min-h-0 items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary transition hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <span className="material-symbols-outlined text-base leading-none">refresh</span>
+                          {isRetrying ? "Reenfileirando..." : "Tentar novamente"}
+                        </button>
+                      ) : null}
+
+                      {row.detailsHref ? (
+                        <Link
+                          to={row.detailsHref}
+                          className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                        >
+                          <span className="material-symbols-outlined text-base leading-none">{row.actionIcon}</span>
+                          Abrir
+                        </Link>
+                      ) : null}
+                    </div>
+                  </article>
+                );
+              })
+            : null}
+        </div>
+
+        <div className="hidden overflow-x-auto md:block">
+          <table className="w-full min-w-[760px] border-collapse text-left">
+            <thead>
+              <tr className="bg-slate-50 dark:bg-slate-800/50">
+                <th className="px-6 py-4 font-display text-xs font-semibold uppercase tracking-widest text-slate-500">Arquivo</th>
+                <th className="px-6 py-4 font-display text-xs font-semibold uppercase tracking-widest text-slate-500">Idioma</th>
+                <th className="px-6 py-4 font-display text-xs font-semibold uppercase tracking-widest text-slate-500">Criado em</th>
+                <th className="px-6 py-4 font-display text-xs font-semibold uppercase tracking-widest text-slate-500">Status</th>
+                <th className="px-6 py-4 font-display text-xs font-semibold uppercase tracking-widest text-slate-500">Progresso</th>
+                <th className="px-6 py-4 font-display text-xs font-semibold uppercase tracking-widest text-slate-500">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+              {loadState === "loading" ? (
+                <tr>
+                  <td className="px-6 py-6 text-sm text-slate-500" colSpan={6}>
+                    Carregando transcrições...
+                  </td>
+                </tr>
+              ) : null}
+
+              {loadState === "error" ? (
+                <tr>
+                  <td className="px-6 py-6 text-sm text-red-500" colSpan={6}>
+                    {loadError}
+                  </td>
+                </tr>
+              ) : null}
+
+              {loadState === "ready" && tableRows.length === 0 ? (
+                <tr>
+                  <td className="px-6 py-6 text-sm text-slate-500" colSpan={6}>
+                    Nenhuma transcrição encontrada. Crie a primeira em "Nova transcrição".
+                  </td>
+                </tr>
+              ) : null}
+
+              {loadState === "ready"
+                ? tableRows.map((row) => {
+                    const status = getStatusPresentation(row.status);
+                    const isWaiting = row.status === "uploaded";
+                    const isRetrying = retryingJobIds.includes(row.id);
+                    return (
+                      <tr key={row.id}>
+                        <td className="px-6 py-4 font-body text-sm font-medium">{row.sourceObjectKey}</td>
+                        <td className="px-6 py-4 font-mono text-xs text-slate-500">{row.language}</td>
+                        <td className="px-6 py-4 font-mono text-xs text-slate-500">{row.createdLabel}</td>
+                        <td className="px-6 py-4">
+                          <span
+                            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${status.badgeClassName}`}
+                          >
+                            {getStatusTone(row.status) === "processing" ? (
+                              <span className="size-1.5 animate-pulse rounded-full bg-blue-500" />
+                            ) : null}
+                            {status.label}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          {isWaiting ? (
+                            <span className="text-xs italic text-slate-400">Aguardando...</span>
                           ) : (
-                            <button type="button" className="rounded p-1 text-slate-400 transition hover:text-primary">
-                              <span className="material-symbols-outlined">{row.actionIcon}</span>
-                            </button>
+                            <div className="space-y-1.5">
+                              <div className="flex items-center gap-2">
+                                <div className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                                  <div
+                                    className={`h-full ${status.progressBarClassName}`}
+                                    style={{ width: `${status.progressPercent}%` }}
+                                  />
+                                </div>
+                                <span className={`text-xs font-medium ${status.progressLabelClassName}`}>
+                                  {status.progressLabel}
+                                </span>
+                              </div>
+                              {row.etaLabel ? (
+                                <p className="text-[11px] text-slate-400">{row.etaLabel}</p>
+                              ) : null}
+                            </div>
                           )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              : null}
-          </tbody>
-        </table>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2">
+                            {row.status === "failed" ? (
+                              <button
+                                type="button"
+                                onClick={() => onRetryFailedJob(row.id)}
+                                disabled={isRetrying}
+                                className="inline-flex min-h-0 items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary transition hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                <span className="material-symbols-outlined text-base leading-none">refresh</span>
+                                {isRetrying ? "Reenfileirando..." : "Tentar novamente"}
+                              </button>
+                            ) : null}
+
+                            {row.detailsHref ? (
+                              <Link
+                                to={row.detailsHref}
+                                className="rounded p-1 text-slate-400 transition hover:bg-slate-100 hover:text-primary dark:hover:bg-slate-800"
+                              >
+                                <span className="material-symbols-outlined">{row.actionIcon}</span>
+                              </Link>
+                            ) : (
+                              <button type="button" className="rounded p-1 text-slate-400 transition hover:text-primary">
+                                <span className="material-symbols-outlined">{row.actionIcon}</span>
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                : null}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {onPageChange && totalPages > 1 ? (
-        <div className="flex items-center justify-between px-1 pt-1">
+        <div className="flex flex-col gap-3 px-1 pt-1 sm:flex-row sm:items-center sm:justify-between">
           <span className="font-mono text-xs text-slate-500">
             Página {currentPage + 1} de {totalPages}
           </span>

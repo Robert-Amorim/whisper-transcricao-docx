@@ -15,7 +15,7 @@ import {
   reprocessTranscription
 } from "../lib/api";
 import { clearSessionTokens, getSessionTokens } from "../lib/session";
-import { PROCESSING_STATUSES } from "../lib/transcriptions";
+import { PROCESSING_STATUSES, getFileNameFromObjectKey } from "../lib/transcriptions";
 import type {
   PublicUser,
   TranscriptionJob,
@@ -60,7 +60,7 @@ export default function DashboardPage() {
     const normalized = searchTerm.trim().toLowerCase();
     if (!normalized) return jobs;
     return jobs.filter((job) => {
-      const source = job.sourceObjectKey.toLowerCase();
+      const source = getFileNameFromObjectKey(job.sourceObjectKey).toLowerCase();
       const language = job.language.toLowerCase();
       return source.includes(normalized) || language.includes(normalized);
     });
@@ -171,6 +171,12 @@ export default function DashboardPage() {
       });
       if (!shouldProcess) return;
 
+      // Safety timeout: always clear retrying state after 30s regardless of outcome
+      const safetyTimer = setTimeout(
+        () => setRetryingJobIds((current) => current.filter((id) => id !== jobId)),
+        30000
+      );
+
       setJobsFeedback("neutral", "Reenfileirando job para novo processamento...");
 
       try {
@@ -185,6 +191,7 @@ export default function DashboardPage() {
         }
         setJobsFeedback("error", getErrorMessage(error, "Não foi possível reenfileirar o job."));
       } finally {
+        clearTimeout(safetyTimer);
         setRetryingJobIds((current) => current.filter((id) => id !== jobId));
       }
     },
@@ -207,13 +214,13 @@ export default function DashboardPage() {
 
   return (
     <main className="font-body text-slate-900 antialiased dark:text-slate-100">
-      <div className="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark">
+      <div className="flex min-h-screen flex-col bg-background-light dark:bg-background-dark lg:h-screen lg:flex-row lg:overflow-hidden">
         <DashboardSidebar user={user} activeMenu="dashboard" />
 
-        <section className="flex min-w-0 flex-1 flex-col overflow-hidden" id="dashboard">
+        <section className="flex min-w-0 flex-1 flex-col lg:overflow-hidden" id="dashboard">
           <DashboardTopbar searchTerm={searchTerm} onSearchTermChange={setSearchTerm} />
 
-          <div className="flex-1 space-y-8 overflow-y-auto p-8">
+          <div className="flex-1 space-y-6 p-4 sm:space-y-8 sm:p-6 lg:overflow-y-auto lg:p-8">
             <DashboardStatsGrid
               wallet={wallet}
               walletUsagePercent={walletUsagePercent}
@@ -221,7 +228,7 @@ export default function DashboardPage() {
               latestCreditEntry={latestCreditEntry}
             />
 
-            <div className="grid grid-cols-12 gap-8">
+            <div className="grid gap-8 xl:grid-cols-12">
               <JobsTable
                 loadState={loadState}
                 loadError={loadError}
@@ -237,7 +244,7 @@ export default function DashboardPage() {
                 pageSize={JOBS_PAGE_SIZE}
               />
 
-              <div className="col-span-4">
+              <div className="xl:col-span-4">
                 <LedgerPanel
                   ledger={ledger}
                   total={ledgerTotal}

@@ -5,6 +5,7 @@ import DashboardSidebar from "../components/dashboard/DashboardSidebar";
 import LedgerPanel from "../components/dashboard/LedgerPanel";
 import {
   ApiError,
+  cancelPixPayment,
   confirmPixPayment,
   createCardPayment,
   createPixPayment,
@@ -14,8 +15,13 @@ import {
   listPayments,
   listWalletLedger
 } from "../lib/api";
+import {
+  CARD_MIN_TOP_UP_BRL,
+  PIX_MIN_TOP_UP_BRL,
+  type TopUpMethod
+} from "../lib/payments";
 import { clearSessionTokens, getSessionTokens } from "../lib/session";
-import { formatCurrency } from "../lib/transcriptions";
+import { formatCurrency, formatEstimatedMinutes, formatPricePerMinuteLabel } from "../lib/transcriptions";
 import type {
   PaymentSummary,
   PixPaymentResponse,
@@ -26,7 +32,6 @@ import type {
 
 type LoadState = "loading" | "ready" | "error";
 type FeedbackTone = "neutral" | "success" | "error";
-type TopUpMethod = "pix" | "credit_card";
 
 const LEDGER_PAGE_SIZE = 10;
 
@@ -47,6 +52,7 @@ export default function CarteiraPage() {
   const [selectedTopUpMethod, setSelectedTopUpMethod] = useState<TopUpMethod>("pix");
   const [isCreatingPayment, setIsCreatingPayment] = useState(false);
   const [isCreatingCardPayment, setIsCreatingCardPayment] = useState(false);
+  const [isCancellingPixPayment, setIsCancellingPixPayment] = useState(false);
   const [isConfirmingMockPayment, setIsConfirmingMockPayment] = useState(false);
   const [isRefreshingData, setIsRefreshingData] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState("");
@@ -169,6 +175,10 @@ export default function CarteiraPage() {
       setFeedback("error", "Informe um valor de recarga válido.");
       return;
     }
+    if (parsed < PIX_MIN_TOP_UP_BRL) {
+      setFeedback("error", `O valor minimo para PIX e ${formatCurrency(PIX_MIN_TOP_UP_BRL.toFixed(2))}.`);
+      return;
+    }
     setIsCreatingPayment(true);
     setFeedback("neutral", "Gerando cobrança PIX...");
     try {
@@ -202,6 +212,10 @@ export default function CarteiraPage() {
       paymentTypeId?: string;
       lastFourDigits?: string;
     }) => {
+      if (payload.amount < CARD_MIN_TOP_UP_BRL) {
+        setFeedback("error", `O valor minimo para cartao e ${formatCurrency(CARD_MIN_TOP_UP_BRL.toFixed(2))}.`);
+        return;
+      }
       setIsCreatingCardPayment(true);
       setFeedback("neutral", "Processando pagamento com cartão...");
       try {
@@ -253,6 +267,29 @@ export default function CarteiraPage() {
     }
   }, [activePixPayment?.payment.id, loadPage, navigate, setFeedback]);
 
+  const handleCancelPixPayment = useCallback(async () => {
+    const paymentId = activePixPayment?.payment.id;
+    if (!paymentId) return;
+
+    setIsCancellingPixPayment(true);
+    setFeedback("neutral", "Cancelando PIX...");
+    try {
+      await cancelPixPayment(paymentId);
+      setActivePixPayment(null);
+      setFeedback("success", "PIX cancelado com sucesso.");
+      await loadPage({ isRefresh: true });
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        clearSessionTokens();
+        navigate("/login", { replace: true });
+        return;
+      }
+      setFeedback("error", getErrorMessage(error, "Nao foi possivel cancelar o PIX."));
+    } finally {
+      setIsCancellingPixPayment(false);
+    }
+  }, [activePixPayment?.payment.id, loadPage, navigate, setFeedback]);
+
   useEffect(() => {
     if (!getSessionTokens()) {
       navigate("/login", { replace: true });
@@ -268,20 +305,27 @@ export default function CarteiraPage() {
   }, [hasPendingPayments, refreshPaymentStatus, selectedTopUpMethod]);
 
   const availableBalance = wallet ? formatCurrency(wallet.availableBalance) : "--";
+  const availableBalanceEstimate = wallet
+    ? formatEstimatedMinutes(wallet.availableBalance)
+    : "--";
 
   return (
     <main className="font-body text-slate-900 antialiased dark:text-slate-100">
-      <div className="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark">
+      <div className="flex min-h-screen flex-col bg-background-light dark:bg-background-dark lg:h-screen lg:flex-row lg:overflow-hidden">
         <DashboardSidebar user={user} activeMenu="wallet" />
 
-        <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <header className="flex h-16 items-center justify-between border-b border-slate-200 bg-white px-8 dark:border-slate-800 dark:bg-background-dark/50">
+        <section className="flex min-w-0 flex-1 flex-col lg:overflow-hidden">
+          <header className="flex flex-col gap-4 border-b border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-background-dark/50 sm:px-6 lg:h-16 lg:flex-row lg:items-center lg:justify-between lg:px-8 lg:py-0">
             <h2 className="font-display text-xl font-bold tracking-tight">Carteira</h2>
             {loadState === "ready" && (
-              <div className="flex items-center gap-2 rounded-lg border border-slate-200 px-4 py-1.5 dark:border-slate-700">
+              <div className="flex w-full items-center gap-3 rounded-lg border border-slate-200 px-4 py-2 dark:border-slate-700 sm:w-auto">
                 <span className="material-symbols-outlined text-[16px] text-primary">account_balance_wallet</span>
-                <span className="font-mono text-sm font-bold">{availableBalance}</span>
-                <span className="font-body text-xs text-slate-500">disponível</span>
+                <div className="flex flex-col">
+                  <span className="font-mono text-sm font-bold">{availableBalance}</span>
+                  <span className="font-body text-xs text-slate-500">
+                    Cerca de {availableBalanceEstimate} no preço atual de {formatPricePerMinuteLabel()}/min
+                  </span>
+                </div>
               </div>
             )}
           </header>
@@ -299,9 +343,9 @@ export default function CarteiraPage() {
           )}
 
           {loadState === "ready" && (
-            <div className="flex-1 overflow-y-auto p-8">
-              <div className="grid grid-cols-12 gap-8">
-                <div className="col-span-7">
+            <div className="flex-1 p-4 sm:p-6 lg:overflow-y-auto lg:p-8">
+              <div className="grid gap-8 xl:grid-cols-12">
+                <div className="xl:col-span-7">
                   <LedgerPanel
                     ledger={ledger}
                     total={ledgerTotal}
@@ -311,16 +355,18 @@ export default function CarteiraPage() {
                     pageSize={LEDGER_PAGE_SIZE}
                   />
                 </div>
-                <div className="col-span-5" id="creditos">
+                <div className="xl:col-span-5" id="creditos">
                   <CreditManagementPanel
                     amountInput={topUpAmountInput}
                     onAmountInputChange={setTopUpAmountInput}
-                    onCreatePixPayment={handleCreatePixPayment}
-                    onCreateCardPayment={handleCreateCardPayment}
-                    payerEmail={user?.email ?? null}
-                    isCreatingPayment={isCreatingPayment}
-                    isCreatingCardPayment={isCreatingCardPayment}
-                    isRefreshingData={isRefreshingData}
+                  onCreatePixPayment={handleCreatePixPayment}
+                  onCreateCardPayment={handleCreateCardPayment}
+                  onCancelPixPayment={handleCancelPixPayment}
+                  payerEmail={user?.email ?? null}
+                  isCreatingPayment={isCreatingPayment}
+                  isCreatingCardPayment={isCreatingCardPayment}
+                  isCancellingPixPayment={isCancellingPixPayment}
+                  isRefreshingData={isRefreshingData}
                     activePix={activePixPayment}
                     onConfirmMockPayment={handleConfirmMockPayment}
                     isConfirmingMockPayment={isConfirmingMockPayment}

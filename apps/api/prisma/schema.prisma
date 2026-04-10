@@ -11,6 +11,12 @@ enum PaymentProvider {
   mercado_pago
 }
 
+enum UserRole {
+  customer
+  support
+  admin
+}
+
 enum PaymentStatus {
   pending
   approved
@@ -70,10 +76,49 @@ enum TranscriptSegmentStatus {
   active
 }
 
+enum SupportThreadChannel {
+  in_app
+  public_form
+}
+
+enum SupportThreadStatus {
+  new
+  open
+  waiting_user
+  waiting_support
+  resolved
+  closed
+}
+
+enum SupportThreadPriority {
+  normal
+}
+
+enum SupportTicketCategory {
+  acesso
+  pagamento
+  transcricao
+  entrega
+  conta
+}
+
+enum SupportMessageAuthorRole {
+  customer
+  support
+  admin
+  system
+}
+
+enum SupportMessageDeliveryChannel {
+  in_app
+  email
+}
+
 model User {
   id                          String            @id @default(cuid())
   name                        String
   email                       String            @unique
+  role                        UserRole          @default(customer)
   passwordHash                String            @map("password_hash")
   sessionVersion              Int               @default(0) @map("session_version")
   emailVerifiedAt             DateTime?         @map("email_verified_at")
@@ -87,6 +132,10 @@ model User {
   payments                    Payment[]
   jobs                        TranscriptionJob[]
   ledgerEntries               WalletLedger[]
+  supportRequestedThreads     SupportThread[]   @relation("SupportRequester")
+  supportAssignedThreads      SupportThread[]   @relation("SupportAssignee")
+  supportMessages             SupportMessage[]  @relation("SupportMessageAuthor")
+  supportNotes                SupportInternalNote[] @relation("SupportInternalNoteAuthor")
 
   @@map("users")
 }
@@ -240,4 +289,67 @@ model TranscriptSegment {
   @@unique([transcriptId, revision, segmentIndex])
   @@index([transcriptId, revision, segmentIndex])
   @@map("transcript_segments")
+}
+
+model SupportThread {
+  id                  String                 @id @default(cuid())
+  channel             SupportThreadChannel
+  status              SupportThreadStatus    @default(new)
+  priority            SupportThreadPriority  @default(normal)
+  category            SupportTicketCategory
+  subject             String
+  requesterUserId     String?                @map("requester_user_id")
+  requesterName       String?                @map("requester_name")
+  requesterEmail      String                 @map("requester_email")
+  assigneeUserId      String?                @map("assignee_user_id")
+  customerLastViewedAt DateTime?             @map("customer_last_viewed_at")
+  staffLastViewedAt   DateTime?              @map("staff_last_viewed_at")
+  lastCustomerMessageAt DateTime?            @map("last_customer_message_at")
+  lastStaffMessageAt  DateTime?              @map("last_staff_message_at")
+  createdAt           DateTime               @default(now()) @map("created_at")
+  updatedAt           DateTime               @updatedAt @map("updated_at")
+  resolvedAt          DateTime?              @map("resolved_at")
+  closedAt            DateTime?              @map("closed_at")
+  requester           User?                  @relation("SupportRequester", fields: [requesterUserId], references: [id], onDelete: SetNull)
+  assignee            User?                  @relation("SupportAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
+  messages            SupportMessage[]
+  notes               SupportInternalNote[]
+
+  @@index([requesterUserId, createdAt])
+  @@index([assigneeUserId, status, updatedAt])
+  @@index([status, updatedAt])
+  @@index([lastCustomerMessageAt])
+  @@index([lastStaffMessageAt])
+  @@index([requesterEmail])
+  @@map("support_threads")
+}
+
+model SupportMessage {
+  id            String                        @id @default(cuid())
+  threadId      String                        @map("thread_id")
+  authorRole    SupportMessageAuthorRole      @map("author_role")
+  authorUserId  String?                       @map("author_user_id")
+  body          String                        @db.Text
+  deliveryChannel SupportMessageDeliveryChannel @map("delivery_channel")
+  isPublic      Boolean                       @default(true) @map("is_public")
+  createdAt     DateTime                      @default(now()) @map("created_at")
+  thread        SupportThread                 @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  author        User?                         @relation("SupportMessageAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
+
+  @@index([threadId, createdAt])
+  @@map("support_messages")
+}
+
+model SupportInternalNote {
+  id           String         @id @default(cuid())
+  threadId     String         @map("thread_id")
+  authorUserId String         @map("author_user_id")
+  body         String         @db.Text
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+  thread       SupportThread  @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  author       User           @relation("SupportInternalNoteAuthor", fields: [authorUserId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
+  @@map("support_internal_notes")
 }

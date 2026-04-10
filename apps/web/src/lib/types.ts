@@ -29,10 +29,13 @@ export type SessionTokens = {
   refreshToken: string;
 };
 
+export type UserRole = "customer" | "support" | "admin";
+
 export type PublicUser = {
   id: string;
   name: string;
   email: string;
+  role: UserRole;
   createdAt: string;
   updatedAt: string;
 };
@@ -214,4 +217,129 @@ export type PixPaymentResponse = {
 
 export type CardPaymentResponse = {
   payment: PaymentSummary;
+};
+
+export type SupportThreadStatus =
+  | "new"
+  | "open"
+  | "waiting_user"
+  | "waiting_support"
+  | "resolved"
+  | "closed";
+
+export type SupportThreadCategory =
+  | "acesso"
+  | "pagamento"
+  | "transcricao"
+  | "entrega"
+  | "conta";
+
+export type SupportThreadChannel = "in_app" | "public_form";
+
+export type SupportMessageDeliveryChannel = "in_app" | "email";
+
+export type SupportMessageAuthorRole = "customer" | "support" | "admin" | "system";
+
+export type SupportMessage = {
+  id: string;
+  authorRole: SupportMessageAuthorRole;
+  authorUserId: string | null;
+  authorName: string | null;
+  body: string;
+  deliveryChannel: SupportMessageDeliveryChannel;
+  isPublic: boolean;
+  createdAt: string;
+};
+
+export type SupportInternalNote = {
+  id: string;
+  authorUserId: string;
+  authorName: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SupportThread = {
+  id: string;
+  channel: SupportThreadChannel;
+  status: SupportThreadStatus;
+  priority: "normal";
+  category: SupportThreadCategory;
+  subject: string;
+  requester: {
+    userId: string | null;
+    name: string | null;
+    email: string;
+  };
+  assignee: {
+    userId: string | null;
+    name: string | null;
+    email: string | null;
+  } | null;
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt: string | null;
+  closedAt: string | null;
+  lastPublicMessageAt: string | null;
+  hasUnreadForCustomer: boolean;
+  hasUnreadForStaff: boolean;
+};
+
+export type SupportThreadDetail = SupportThread & {
+  messages: SupportMessage[];
+};
+
+export type AdminSupportThreadDetail = SupportThreadDetail & {
+  notes: SupportInternalNote[];
+  operationalContext: {
+    wallet: WalletSummary | null;
+    ledger: Array<{
+      id: string;
+      type: WalletLedgerEntry["type"];
+      amount: string;
+      jobId: string | null;
+      paymentId: string | null;
+      createdAt: string;
+    }>;
+    payments: PaymentSummary[];
+    jobs: TranscriptionJob[];
+  };
+};
+
+export type SupportSummary = {
+  openTickets: number;
+  unreadReplies: number;
+};
+
+export type AdminSupportSummary = {
+  openTickets: number;
+  waitingSupport: number;
+  unreadForStaff: number;
+  failedJobsLast24Hours: number;
+  attentionPaymentsLast24Hours: number;
+};
+
+export type AdminUserListItem = PublicUser & {
+  wallet: {
+    availableBalance: string;
+    heldBalance: string;
+    updatedAt: string;
+  } | null;
+};
+
+export type AdminUserDetail = {
+  user: PublicUser;
+  wallet: WalletSummary | null;
+  ledger: Array<{
+    id: string;
+    type: WalletLedgerEntry["type"];
+    amount: string;
+    jobId: string | null;
+    paymentId: string | null;
+    createdAt: string;
+  }>;
+  payments: PaymentSummary[];
+  jobs: TranscriptionJob[];
+  tickets: Array<SupportThread & { notes: SupportInternalNote[] }>;
 };

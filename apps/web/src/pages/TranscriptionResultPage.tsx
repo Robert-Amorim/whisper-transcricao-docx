@@ -344,11 +344,11 @@ export default function TranscriptionResultPage() {
 
   return (
     <main className="font-body text-slate-900 antialiased dark:text-slate-100">
-      <div className="flex min-h-screen overflow-hidden bg-background-light dark:bg-background-dark">
+      <div className="flex min-h-screen flex-col bg-background-light dark:bg-background-dark lg:flex-row lg:overflow-hidden">
         <DashboardSidebar user={user} activeMenu="transcriptions" />
 
-        <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <header className="flex h-16 items-center justify-between border-b border-slate-200 bg-white px-4 dark:border-slate-800 dark:bg-background-dark/50 sm:px-8">
+        <section className="flex min-w-0 flex-1 flex-col lg:overflow-hidden">
+          <header className="flex flex-col gap-4 border-b border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-background-dark/50 sm:px-6 lg:h-16 lg:flex-row lg:items-center lg:justify-between lg:px-8 lg:py-0">
             <div className="min-w-0">
               <p className="font-display text-[10px] font-semibold uppercase tracking-[0.3em] text-slate-400">
                 Centro de transcript
@@ -357,11 +357,11 @@ export default function TranscriptionResultPage() {
                 {fileName || "Resultado"}
               </h2>
             </div>
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
               {job && (
                 <Link
                   to={`/transcricoes/${job.id}`}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 font-body text-sm text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 font-body text-sm text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
                 >
                   <span className="material-symbols-outlined text-[16px]">info</span>
                   Detalhes
@@ -369,7 +369,7 @@ export default function TranscriptionResultPage() {
               )}
               <Link
                 to="/transcricoes"
-                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 font-body text-sm text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 font-body text-sm text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
               >
                 <span className="material-symbols-outlined text-[16px]">arrow_back</span>
                 Transcrições
@@ -377,7 +377,7 @@ export default function TranscriptionResultPage() {
             </div>
           </header>
 
-          <div className="flex-1 overflow-y-auto p-4 sm:p-8">
+          <div className="flex-1 p-4 sm:p-6 lg:overflow-y-auto lg:p-8">
             {loadState === "loading" && (
               <div className="flex items-center gap-2 text-slate-500">
                 <Spinner size="sm" className="text-primary" />
@@ -438,7 +438,7 @@ export default function TranscriptionResultPage() {
                     <div className="rounded-[28px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
                       <div className="flex flex-col gap-4 border-b border-slate-100 px-4 py-4 dark:border-slate-800 sm:px-6">
                         <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-800/80">
+                          <div className="flex flex-wrap rounded-xl border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-800/80">
                             {[
                               { key: "original", label: "Original" },
                               { key: "translated", label: "Traduzido", disabled: !hasTranslatedVariant },
@@ -462,7 +462,7 @@ export default function TranscriptionResultPage() {
 
                           <div className="flex flex-wrap items-center gap-2">
                             {activeTab === "subtitles" && hasTranslatedVariant && (
-                              <div className="inline-flex rounded-lg border border-slate-200 p-1 dark:border-slate-700">
+                              <div className="flex flex-wrap rounded-lg border border-slate-200 p-1 dark:border-slate-700">
                                 {(["original", "translated"] as TranscriptVariant[]).map((variant) => (
                                   <button
                                     key={variant}
@@ -502,7 +502,7 @@ export default function TranscriptionResultPage() {
                         </div>
 
                         {activeTab === "original" && (
-                          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-slate-50 px-4 py-3 dark:bg-slate-800/70">
+                          <div className="flex flex-col gap-3 rounded-2xl bg-slate-50 px-4 py-3 dark:bg-slate-800/70 sm:flex-row sm:items-center sm:justify-between">
                             <div>
                               <p className="font-body text-sm font-semibold text-slate-700 dark:text-slate-200">
                                 Editor por segmentos
@@ -515,7 +515,7 @@ export default function TranscriptionResultPage() {
                               type="button"
                               onClick={() => void handleSaveTranscript()}
                               disabled={!isDirty || isSaving || hasRevisionConflict}
-                              className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 font-display text-xs font-bold uppercase tracking-[0.24em] text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                              className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 font-display text-xs font-bold uppercase tracking-[0.24em] text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                               {isSaving ? <Spinner size="sm" /> : <span className="material-symbols-outlined text-[16px]">save</span>}
                               {isSaving ? "Salvando" : "Salvar revisão"}

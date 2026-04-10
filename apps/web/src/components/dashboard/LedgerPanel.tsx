@@ -105,7 +105,7 @@ export default function LedgerPanel({
 
   return (
     <aside className="space-y-4" id="atividade">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h4 className="font-display text-lg font-bold tracking-tight">Atividade recente</h4>
       </div>
 
@@ -126,7 +126,7 @@ export default function LedgerPanel({
                   </span>
                 </div>
                 <div className="min-w-0 flex-1 overflow-hidden">
-                  <div className="flex items-center justify-between gap-3">
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                     <p className="truncate font-body text-sm font-semibold">{item.title}</p>
                     <p
                       className={`font-mono text-sm font-bold ${
@@ -149,7 +149,7 @@ export default function LedgerPanel({
         )}
 
         {onPageChange && totalPages > 1 ? (
-          <div className="flex items-center justify-between pt-2">
+          <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
             <span className="font-mono text-xs text-slate-500">
               Página {currentPage + 1} de {totalPages}
               {total > 0 ? ` · ${total} movimentações` : ""}

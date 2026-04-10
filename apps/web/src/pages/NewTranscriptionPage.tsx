@@ -190,23 +190,23 @@ export default function NewTranscriptionPage() {
 
   return (
     <main className="font-body text-slate-900 antialiased dark:text-slate-100">
-      <div className="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark">
+      <div className="flex min-h-screen flex-col bg-background-light dark:bg-background-dark lg:h-screen lg:flex-row lg:overflow-hidden">
         <DashboardSidebar user={user} activeMenu="new-transcription" />
 
-        <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <section className="flex min-w-0 flex-1 flex-col lg:overflow-hidden">
           {/* Header */}
-          <header className="flex h-16 items-center justify-between border-b border-slate-200 bg-white px-8 dark:border-slate-800 dark:bg-background-dark/50">
+          <header className="flex flex-col gap-4 border-b border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-background-dark/50 sm:px-6 lg:h-16 lg:flex-row lg:items-center lg:justify-between lg:px-8 lg:py-0">
             <h2 className="font-display text-xl font-bold tracking-tight">Nova transcrição</h2>
             <Link
               to="/transcricoes"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 font-body text-sm text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
+              className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 font-body text-sm text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 sm:w-auto"
             >
               <span className="material-symbols-outlined text-[16px]">arrow_back</span>
               Voltar
             </Link>
           </header>
 
-          <div className="flex-1 overflow-y-auto p-8">
+          <div className="flex-1 p-4 sm:p-6 lg:overflow-y-auto lg:p-8">
             <div className="grid grid-cols-1 gap-8 xl:grid-cols-12">
 
               {/* Upload form */}
@@ -469,7 +469,9 @@ export default function NewTranscriptionPage() {
                       "Áudio limpo garante maior precisão",
                       "Reduza ruído de fundo quando possível",
                       "Confirme o idioma antes de enviar",
-                      "A tradução é gerada depois do transcript original"
+                      "A tradução é gerada depois do transcript original",
+                      "Depois que o job entrar na fila, você pode fechar o site e voltar mais tarde",
+                      "Áudios longos exibem uma previsão inicial de conclusão na tela da transcrição"
                     ].map((tip) => (
                       <li key={tip} className="flex items-start gap-2">
                         <span className="material-symbols-outlined mt-0.5 text-[14px] text-primary">

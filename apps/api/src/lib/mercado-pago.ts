@@ -10,6 +10,7 @@ export type MercadoPagoPixPaymentRequest = {
   description: string;
   externalReference: string;
   idempotencyKey: string;
+  expiresAt?: string;
   notificationUrl?: string;
 };
 
@@ -26,6 +27,7 @@ export type MercadoPagoPixPaymentResponse = {
 export type MercadoPagoPaymentStatusResponse = {
   id: string;
   status: string;
+  statusDetail: string | null;
   raw: unknown;
 };
 
@@ -133,6 +135,7 @@ export function createMercadoPagoClient(config: MercadoPagoClientConfig) {
           description: payment.description,
           payment_method_id: "pix",
           external_reference: payment.externalReference,
+          date_of_expiration: payment.expiresAt,
           notification_url: payment.notificationUrl,
           payer: {
             email: payment.payerEmail
@@ -253,6 +256,7 @@ export function createMercadoPagoClient(config: MercadoPagoClientConfig) {
       const record = payload as {
         id?: string | number;
         status?: string;
+        status_detail?: string;
       };
       const providerId =
         typeof record.id === "number" || typeof record.id === "string"
@@ -262,6 +266,42 @@ export function createMercadoPagoClient(config: MercadoPagoClientConfig) {
       return {
         id: providerId,
         status: typeof record.status === "string" ? record.status : "pending",
+        statusDetail:
+          typeof record.status_detail === "string" ? record.status_detail : null,
+        raw: payload
+      };
+    },
+
+    async cancelPayment(
+      paymentId: string,
+      idempotencyKey: string
+    ): Promise<MercadoPagoPaymentStatusResponse> {
+      const payload = await request(`/v1/payments/${encodeURIComponent(paymentId)}`, {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+          "x-idempotency-key": idempotencyKey
+        },
+        body: JSON.stringify({
+          status: "cancelled"
+        })
+      });
+
+      const record = payload as {
+        id?: string | number;
+        status?: string;
+        status_detail?: string;
+      };
+      const providerId =
+        typeof record.id === "number" || typeof record.id === "string"
+          ? String(record.id)
+          : paymentId;
+
+      return {
+        id: providerId,
+        status: typeof record.status === "string" ? record.status : "pending",
+        statusDetail:
+          typeof record.status_detail === "string" ? record.status_detail : null,
         raw: payload
       };
     }

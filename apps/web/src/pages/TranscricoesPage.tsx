@@ -105,6 +105,12 @@ export default function TranscricoesPage() {
       });
       if (!shouldProcess) return;
 
+      // Safety timeout: always clear retrying state after 30s regardless of outcome
+      const safetyTimer = setTimeout(
+        () => setRetryingJobIds((prev) => prev.filter((id) => id !== jobId)),
+        30000
+      );
+
       setFeedback("neutral", "Reenfileirando para novo processamento...");
 
       try {
@@ -119,6 +125,7 @@ export default function TranscricoesPage() {
         }
         setFeedback("error", getErrorMessage(error, "Não foi possível reenfileirar o job."));
       } finally {
+        clearTimeout(safetyTimer);
         setRetryingJobIds((prev) => prev.filter((id) => id !== jobId));
       }
     },
@@ -141,15 +148,15 @@ export default function TranscricoesPage() {
 
   return (
     <main className="font-body text-slate-900 antialiased dark:text-slate-100">
-      <div className="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark">
+      <div className="flex min-h-screen flex-col bg-background-light dark:bg-background-dark lg:h-screen lg:flex-row lg:overflow-hidden">
         <DashboardSidebar user={user} activeMenu="transcriptions" />
 
-        <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <header className="flex h-16 items-center justify-between border-b border-slate-200 bg-white px-8 dark:border-slate-800 dark:bg-background-dark/50">
+        <section className="flex min-w-0 flex-1 flex-col lg:overflow-hidden">
+          <header className="flex flex-col gap-4 border-b border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-background-dark/50 sm:px-6 lg:h-16 lg:flex-row lg:items-center lg:justify-between lg:px-8 lg:py-0">
             <h2 className="font-display text-xl font-bold tracking-tight">Transcrições</h2>
 
-            <div className="flex items-center gap-4">
-              <div className="relative">
+            <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+              <div className="relative w-full sm:w-64">
                 <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-slate-400">
                   search
                 </span>
@@ -158,12 +165,12 @@ export default function TranscricoesPage() {
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   placeholder="Buscar arquivos..."
-                  className="min-h-0 w-64 rounded-lg border-none bg-slate-100 py-2 pl-9 pr-4 font-body text-sm transition-all focus:ring-2 focus:ring-primary dark:bg-slate-800 dark:placeholder:text-slate-500"
+                  className="min-h-0 w-full rounded-lg border-none bg-slate-100 py-2 pl-9 pr-4 font-body text-sm transition-all focus:ring-2 focus:ring-primary dark:bg-slate-800 dark:placeholder:text-slate-500"
                 />
               </div>
               <a
                 href="/transcricoes/nova"
-                className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 font-display text-sm font-semibold text-white transition hover:opacity-90"
+                className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary px-4 py-2 font-display text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto"
               >
                 <span className="material-symbols-outlined text-[18px]">add</span>
                 Nova transcrição
@@ -171,7 +178,7 @@ export default function TranscricoesPage() {
             </div>
           </header>
 
-          <div className="flex-1 overflow-y-auto p-8">
+          <div className="flex-1 p-4 sm:p-6 lg:overflow-y-auto lg:p-8">
             <JobsTable
               loadState={loadState}
               loadError={loadError}

@@ -28,8 +28,8 @@ export default function VerifyEmailPage() {
   }, [token]);
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-background-dark px-6">
-      <div className="w-full max-w-md rounded-xl border border-slate-800 bg-slate-900 p-8 text-center">
+    <main className="flex min-h-screen flex-col items-center justify-center bg-background-dark px-4 sm:px-6">
+      <div className="w-full max-w-md rounded-xl border border-slate-800 bg-slate-900 p-6 text-center sm:p-8">
         <div className="mb-6 flex items-center justify-center gap-2">
           <span className="material-symbols-outlined text-[28px] text-primary">graphic_eq</span>
           <span className="font-display text-xl font-bold text-white">Voxora</span>

@@ -172,7 +172,7 @@ export default function ProfilePage() {
   if (bootstrapError && !user) {
     return (
       <main className="font-display text-slate-900 antialiased dark:text-slate-100">
-        <div className="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark">
+        <div className="flex min-h-screen flex-col bg-background-light dark:bg-background-dark lg:h-screen lg:flex-row lg:overflow-hidden">
           <DashboardSidebar user={null} activeMenu="settings" />
           <section className="grid min-w-0 flex-1 place-items-center p-8">
             <article className="w-full max-w-xl rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
@@ -181,17 +181,17 @@ export default function ProfilePage() {
               <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
                 Sua sessão foi mantida. Assim que a API voltar, acesse novamente.
               </p>
-              <div className="mt-4 flex gap-3">
+              <div className="mt-4 flex flex-col gap-3 sm:flex-row">
                 <Link
                   to="/dashboard"
-                  className="inline-flex min-h-0 items-center rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+                  className="inline-flex min-h-0 items-center justify-center rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
                 >
                   Voltar ao dashboard
                 </Link>
                 <button
                   type="button"
                   onClick={() => window.location.reload()}
-                  className="inline-flex min-h-0 items-center rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-white transition hover:bg-primary/90"
+                  className="inline-flex min-h-0 items-center justify-center rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-white transition hover:bg-primary/90"
                 >
                   Tentar novamente
                 </button>
@@ -205,36 +205,36 @@ export default function ProfilePage() {
 
   return (
     <main className="font-body text-slate-900 antialiased dark:text-slate-100">
-      <div className="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark">
+      <div className="flex min-h-screen flex-col bg-background-light dark:bg-background-dark lg:h-screen lg:flex-row lg:overflow-hidden">
         <DashboardSidebar user={user} activeMenu="settings" />
 
-        <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <header className="flex h-16 items-center justify-between border-b border-slate-200 bg-white px-8 dark:border-slate-800 dark:bg-background-dark/50">
+        <section className="flex min-w-0 flex-1 flex-col lg:overflow-hidden">
+          <header className="flex flex-col gap-4 border-b border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-background-dark/50 sm:px-6 lg:h-16 lg:flex-row lg:items-center lg:justify-between lg:px-8 lg:py-0">
             <div className="flex flex-col">
               <h2 className="font-display text-xl font-bold tracking-tight">Perfil</h2>
               <p className="font-body text-xs text-slate-500 dark:text-slate-400">
                 Gerencie sua conta e credenciais de acesso.
               </p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
               <Link
                 to="/dashboard"
-                className="inline-flex min-h-0 items-center rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+                className="inline-flex min-h-0 items-center justify-center rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
               >
                 Voltar ao dashboard
               </Link>
               <button
                 type="button"
                 onClick={handleLogout}
-                className="inline-flex min-h-0 items-center rounded-lg border border-red-500/50 bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-400 transition hover:bg-red-500/20"
+                className="inline-flex min-h-0 items-center justify-center rounded-lg border border-red-500/50 bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-400 transition hover:bg-red-500/20"
               >
                 Sair
               </button>
             </div>
           </header>
 
-          <div className="flex-1 overflow-y-auto p-8">
-            <div className="mx-auto grid max-w-6xl grid-cols-12 gap-6">
+          <div className="flex-1 p-4 sm:p-6 lg:overflow-y-auto lg:p-8">
+            <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-12">
               <article className="col-span-12 rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900 lg:col-span-7">
                 <div className="mb-6">
                   <h3 className="font-display text-lg font-bold">Dados da conta</h3>
@@ -358,15 +358,33 @@ export default function ProfilePage() {
                 </article>
 
                 <article className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
-                  <h3 className="font-display text-lg font-bold">Sessão e informações</h3>
-                  <dl className="mt-4 space-y-2 text-sm text-slate-500 dark:text-slate-400">
-                    <div className="flex items-center justify-between gap-4">
-                      <dt className="font-body">Conta criada em</dt>
-                      <dd className="font-mono text-right text-slate-700 dark:text-slate-200">{accountCreatedAt}</dd>
+                  <div className="space-y-1">
+                    <h3 className="font-display text-lg font-bold">Sessão e informações</h3>
+                    <p className="font-body text-sm text-slate-500 dark:text-slate-400">
+                      Consulte os dados principais da sua conta e encerre a sessão com segurança.
+                    </p>
+                  </div>
+
+                  <dl className="mt-5 space-y-3">
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-[#111418]">
+                      <div className="flex flex-col gap-1 sm:grid sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-4">
+                        <dt className="font-body text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                          Conta criada em
+                        </dt>
+                        <dd className="font-mono text-sm font-medium text-slate-700 dark:text-slate-200 sm:text-right">
+                          {accountCreatedAt}
+                        </dd>
+                      </div>
                     </div>
-                    <div className="flex items-center justify-between gap-4">
-                      <dt className="font-body">Última atualização</dt>
-                      <dd className="font-mono text-right text-slate-700 dark:text-slate-200">{accountUpdatedAt}</dd>
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-[#111418]">
+                      <div className="flex flex-col gap-1 sm:grid sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-4">
+                        <dt className="font-body text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                          Última atualização
+                        </dt>
+                        <dd className="font-mono text-sm font-medium text-slate-700 dark:text-slate-200 sm:text-right">
+                          {accountUpdatedAt}
+                        </dd>
+                      </div>
                     </div>
                   </dl>
 
