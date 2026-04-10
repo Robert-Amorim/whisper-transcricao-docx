@@ -19,8 +19,9 @@ const config: Config = {
         "text-muted": "#637588"
       },
       fontFamily: {
-        display: ["Inter", "sans-serif"],
-        body: ["Inter", "sans-serif"]
+        display: ["Bricolage Grotesque", "sans-serif"],
+        body: ["Instrument Sans", "sans-serif"],
+        mono: ["JetBrains Mono", "monospace"]
       },
       borderRadius: {
         DEFAULT: "0.25rem",

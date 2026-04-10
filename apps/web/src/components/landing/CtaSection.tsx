@@ -9,8 +9,7 @@ export default function CtaSection() {
             Pronto para acelerar seu trabalho?
           </h2>
           <p className="mx-auto mb-10 max-w-2xl text-lg text-slate-300 lp-copy">
-            Junte-se a milhares de profissionais que economizam horas de trabalho manual com o
-            Voxora.
+            Economize horas de trabalho manual. Crie sua conta e comece a transcrever agora.
           </p>
           <Link
             className="inline-flex h-14 cursor-pointer items-center justify-center rounded-lg bg-white px-8 text-base font-bold text-slate-900 transition-all hover:scale-105 hover:bg-slate-100"
@@ -19,7 +18,7 @@ export default function CtaSection() {
             Criar Conta Gratuita
           </Link>
           <p className="lp-copy mt-6 text-sm text-slate-500 dark:text-slate-300">
-            Não requer cartão de crédito • 1 hora grátis
+            Não requer cartão de crédito • Créditos gratuitos ao criar conta
           </p>
         </div>
       </div>

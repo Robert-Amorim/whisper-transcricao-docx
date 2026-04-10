@@ -5,6 +5,7 @@ export type WhisperSegment = {
   startSec: number | null;
   endSec: number | null;
   text: string;
+  speakerLabel?: string | null;
 };
 
 export type WhisperTranscriptionResult = {
@@ -19,6 +20,7 @@ type OpenAiTranscriptionOptions = {
   model: string;
   fileName: string;
   language?: string;
+  prompt?: string;
   audioBuffer: Buffer;
   timeoutMs: number;
 };
@@ -28,6 +30,16 @@ type OpenAiVerboseResponse = {
   duration?: number;
   segments?: Array<{
     id?: number;
+    start?: number;
+    end?: number;
+    text?: string;
+  }>;
+};
+
+type OpenAiDiarizedResponse = {
+  text?: string;
+  segments?: Array<{
+    speaker?: string;
     start?: number;
     end?: number;
     text?: string;
@@ -180,6 +192,55 @@ export function renderSrtText(segments: WhisperSegment[]) {
     .join("\n");
 }
 
+// gpt-4o-transcribe and gpt-4o-mini-transcribe only support "json" or "text"
+// response formats; "verbose_json" (with segments/timestamps) is whisper-1 only.
+function isGpt4oTranscribeModel(model: string) {
+  return (
+    model === "gpt-4o-transcribe" ||
+    model === "gpt-4o-mini-transcribe"
+  );
+}
+
+export function isDiarizeModel(model: string) {
+  return model === "gpt-4o-transcribe-diarize";
+}
+
+function normalizeDiarizedSegments(
+  rawSegments: OpenAiDiarizedResponse["segments"],
+  fullText: string,
+  durationSeconds: number | null
+): WhisperSegment[] {
+  if (!Array.isArray(rawSegments) || rawSegments.length === 0) {
+    return normalizeSegments([], fullText, durationSeconds);
+  }
+
+  // Map API speaker identifiers (e.g. "SPEAKER_0") to friendly Portuguese labels
+  const speakerMap = new Map<string, string>();
+  const segments: WhisperSegment[] = [];
+
+  for (const raw of rawSegments) {
+    const text = (raw.text ?? "").trim();
+    if (!text) {
+      continue;
+    }
+
+    const apiSpeaker = raw.speaker ?? "";
+    if (!speakerMap.has(apiSpeaker)) {
+      speakerMap.set(apiSpeaker, `Falante ${speakerMap.size + 1}`);
+    }
+
+    segments.push({
+      chunkIndex: segments.length,
+      startSec: typeof raw.start === "number" && Number.isFinite(raw.start) ? raw.start : null,
+      endSec: typeof raw.end === "number" && Number.isFinite(raw.end) ? raw.end : null,
+      text,
+      speakerLabel: speakerMap.get(apiSpeaker) ?? null
+    });
+  }
+
+  return segments.length > 0 ? segments : normalizeSegments([], fullText, durationSeconds);
+}
+
 export async function transcribeWithOpenAi(
   options: OpenAiTranscriptionOptions
 ): Promise<WhisperTranscriptionResult> {
@@ -189,13 +250,37 @@ export async function transcribeWithOpenAi(
     type: inferAudioMimeType(options.fileName)
   });
 
+  const useDiarize = isDiarizeModel(options.model);
+  const useJsonFormat = isGpt4oTranscribeModel(options.model);
+
   const formData = new FormData();
   formData.append("file", file);
   formData.append("model", options.model);
-  formData.append("response_format", "verbose_json");
-  formData.append("temperature", "0");
-  if (options.language && options.language.trim().length > 0) {
-    formData.append("language", options.language);
+
+  if (useDiarize) {
+    // diarize model: requires diarized_json + chunking_strategy; prompt not supported
+    formData.append("response_format", "diarized_json");
+    formData.append("chunking_strategy", "auto");
+    if (options.language && options.language.trim().length > 0) {
+      formData.append("language", options.language);
+    }
+  } else if (useJsonFormat) {
+    formData.append("response_format", "json");
+    if (options.language && options.language.trim().length > 0) {
+      formData.append("language", options.language);
+    }
+    if (options.prompt && options.prompt.trim().length > 0) {
+      formData.append("prompt", options.prompt.trim());
+    }
+  } else {
+    formData.append("response_format", "verbose_json");
+    formData.append("temperature", "0");
+    if (options.language && options.language.trim().length > 0) {
+      formData.append("language", options.language);
+    }
+    if (options.prompt && options.prompt.trim().length > 0) {
+      formData.append("prompt", options.prompt.trim());
+    }
   }
 
   const controller = new AbortController();
@@ -218,8 +303,22 @@ export async function transcribeWithOpenAi(
       );
     }
 
+    if (useDiarize) {
+      const payload = (await response.json()) as OpenAiDiarizedResponse;
+      const text = (payload.text ?? "").trim();
+      const segments = normalizeDiarizedSegments(payload.segments, text, null);
+      const durationSeconds = resolveDurationSeconds(null, segments);
+      return { text, durationSeconds, segments };
+    }
+
     const payload = (await response.json()) as OpenAiVerboseResponse;
     const text = (payload.text ?? "").trim();
+
+    if (useJsonFormat) {
+      const segments = normalizeSegments([], text, null);
+      return { text, durationSeconds: null, segments };
+    }
+
     const segments = normalizeSegments(payload.segments, text, null);
     const durationSeconds = resolveDurationSeconds(payload.duration, segments);
 

@@ -8,21 +8,34 @@ export const JOB_STATUSES = [
 ] as const;
 
 export const PAYMENT_STATUSES = ["pending", "approved", "rejected", "expired"] as const;
-export const OUTPUT_FORMATS = ["txt", "srt"] as const;
+export const OUTPUT_FORMATS = ["txt", "srt", "pdf"] as const;
+export const TRANSCRIPT_VARIANTS = ["original", "translated"] as const;
+export const TRANSCRIPT_STATUSES = [
+  "pending",
+  "processing",
+  "ready",
+  "failed",
+  "regenerating"
+] as const;
 
 export type JobStatus = (typeof JOB_STATUSES)[number];
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 export type OutputFormat = (typeof OUTPUT_FORMATS)[number];
+export type TranscriptVariant = (typeof TRANSCRIPT_VARIANTS)[number];
+export type TranscriptStatus = (typeof TRANSCRIPT_STATUSES)[number];
 
 export type SessionTokens = {
   accessToken: string;
   refreshToken: string;
 };
 
+export type UserRole = "customer" | "support" | "admin";
+
 export type PublicUser = {
   id: string;
   name: string;
   email: string;
+  role: UserRole;
   createdAt: string;
   updatedAt: string;
 };
@@ -46,6 +59,8 @@ export type WalletLedgerEntry = {
 
 export type TranscriptionOutput = {
   format: OutputFormat;
+  variant: TranscriptVariant;
+  language: string | null;
   objectKey: string;
   sizeBytes: number;
   createdAt: string;
@@ -60,11 +75,47 @@ export type TranscriptionChunk = {
   updatedAt: string;
 };
 
+export type TranscriptSegment = {
+  id: string;
+  revision: number;
+  segmentIndex: number;
+  startSec: string | null;
+  endSec: string | null;
+  text: string;
+  speakerLabel: string | null;
+  speakerConfidence: string | null;
+  language: string;
+  kind: string;
+  status: "active";
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type TranscriptVariantDetail = {
+  id: string;
+  variant: TranscriptVariant;
+  kind: "transcript" | "translation";
+  language: string;
+  status: TranscriptStatus;
+  revision: number;
+  sourceRevision: number | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  publishedAt: string | null;
+  updatedAt: string;
+  segments: TranscriptSegment[];
+};
+
 export type TranscriptionJob = {
   id: string;
   status: JobStatus;
   sourceObjectKey: string;
   language: string;
+  translationTargetLanguage: string | null;
+  diarizationEnabled: boolean;
+  generatePdf: boolean;
+  originalTranscriptStatus: TranscriptStatus;
+  translatedTranscriptStatus: TranscriptStatus | null;
   durationSeconds: number | null;
   pricePerMinute: string;
   chargeAmount: string | null;
@@ -78,6 +129,10 @@ export type TranscriptionJob = {
 
 export type TranscriptionJobDetail = TranscriptionJob & {
   chunks?: TranscriptionChunk[];
+  transcripts: {
+    original: TranscriptVariantDetail | null;
+    translated: TranscriptVariantDetail | null;
+  };
 };
 
 export type AuthResponse = {
@@ -100,6 +155,27 @@ export type UploadPresignResponse = {
   requiredHeaders: Record<string, string>;
   maxBytes: number;
   expiresInSeconds: number;
+};
+
+export type CreateTranscriptionPayload = {
+  sourceObjectKey: string;
+  language: string;
+  features?: {
+    diarization?: boolean;
+    translationTargetLanguage?: string;
+    generatePdf?: boolean;
+  };
+};
+
+export type UpdateOriginalTranscriptPayload = {
+  segments: Array<{
+    segmentIndex: number;
+    startSec: string | null;
+    endSec: string | null;
+    text: string;
+    speakerLabel?: string | null;
+    language?: string;
+  }>;
 };
 
 export type PaymentSummary = {
@@ -141,4 +217,129 @@ export type PixPaymentResponse = {
 
 export type CardPaymentResponse = {
   payment: PaymentSummary;
+};
+
+export type SupportThreadStatus =
+  | "new"
+  | "open"
+  | "waiting_user"
+  | "waiting_support"
+  | "resolved"
+  | "closed";
+
+export type SupportThreadCategory =
+  | "acesso"
+  | "pagamento"
+  | "transcricao"
+  | "entrega"
+  | "conta";
+
+export type SupportThreadChannel = "in_app" | "public_form";
+
+export type SupportMessageDeliveryChannel = "in_app" | "email";
+
+export type SupportMessageAuthorRole = "customer" | "support" | "admin" | "system";
+
+export type SupportMessage = {
+  id: string;
+  authorRole: SupportMessageAuthorRole;
+  authorUserId: string | null;
+  authorName: string | null;
+  body: string;
+  deliveryChannel: SupportMessageDeliveryChannel;
+  isPublic: boolean;
+  createdAt: string;
+};
+
+export type SupportInternalNote = {
+  id: string;
+  authorUserId: string;
+  authorName: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SupportThread = {
+  id: string;
+  channel: SupportThreadChannel;
+  status: SupportThreadStatus;
+  priority: "normal";
+  category: SupportThreadCategory;
+  subject: string;
+  requester: {
+    userId: string | null;
+    name: string | null;
+    email: string;
+  };
+  assignee: {
+    userId: string | null;
+    name: string | null;
+    email: string | null;
+  } | null;
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt: string | null;
+  closedAt: string | null;
+  lastPublicMessageAt: string | null;
+  hasUnreadForCustomer: boolean;
+  hasUnreadForStaff: boolean;
+};
+
+export type SupportThreadDetail = SupportThread & {
+  messages: SupportMessage[];
+};
+
+export type AdminSupportThreadDetail = SupportThreadDetail & {
+  notes: SupportInternalNote[];
+  operationalContext: {
+    wallet: WalletSummary | null;
+    ledger: Array<{
+      id: string;
+      type: WalletLedgerEntry["type"];
+      amount: string;
+      jobId: string | null;
+      paymentId: string | null;
+      createdAt: string;
+    }>;
+    payments: PaymentSummary[];
+    jobs: TranscriptionJob[];
+  };
+};
+
+export type SupportSummary = {
+  openTickets: number;
+  unreadReplies: number;
+};
+
+export type AdminSupportSummary = {
+  openTickets: number;
+  waitingSupport: number;
+  unreadForStaff: number;
+  failedJobsLast24Hours: number;
+  attentionPaymentsLast24Hours: number;
+};
+
+export type AdminUserListItem = PublicUser & {
+  wallet: {
+    availableBalance: string;
+    heldBalance: string;
+    updatedAt: string;
+  } | null;
+};
+
+export type AdminUserDetail = {
+  user: PublicUser;
+  wallet: WalletSummary | null;
+  ledger: Array<{
+    id: string;
+    type: WalletLedgerEntry["type"];
+    amount: string;
+    jobId: string | null;
+    paymentId: string | null;
+    createdAt: string;
+  }>;
+  payments: PaymentSummary[];
+  jobs: TranscriptionJob[];
+  tickets: Array<SupportThread & { notes: SupportInternalNote[] }>;
 };

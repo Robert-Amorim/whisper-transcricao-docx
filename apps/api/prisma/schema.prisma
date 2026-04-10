@@ -11,6 +11,12 @@ enum PaymentProvider {
   mercado_pago
 }
 
+enum UserRole {
+  customer
+  support
+  admin
+}
+
 enum PaymentStatus {
   pending
   approved
@@ -45,19 +51,91 @@ enum ChunkStatus {
 enum OutputFormat {
   txt
   srt
+  pdf
+}
+
+enum TranscriptVariant {
+  original
+  translated
+}
+
+enum TranscriptKind {
+  transcript
+  translation
+}
+
+enum TranscriptStatus {
+  pending
+  processing
+  ready
+  failed
+  regenerating
+}
+
+enum TranscriptSegmentStatus {
+  active
+}
+
+enum SupportThreadChannel {
+  in_app
+  public_form
+}
+
+enum SupportThreadStatus {
+  new
+  open
+  waiting_user
+  waiting_support
+  resolved
+  closed
+}
+
+enum SupportThreadPriority {
+  normal
+}
+
+enum SupportTicketCategory {
+  acesso
+  pagamento
+  transcricao
+  entrega
+  conta
+}
+
+enum SupportMessageAuthorRole {
+  customer
+  support
+  admin
+  system
+}
+
+enum SupportMessageDeliveryChannel {
+  in_app
+  email
 }
 
 model User {
-  id            String            @id @default(cuid())
-  name          String
-  email         String            @unique
-  passwordHash  String            @map("password_hash")
-  createdAt     DateTime          @default(now()) @map("created_at")
-  updatedAt     DateTime          @updatedAt @map("updated_at")
-  wallet        Wallet?
-  payments      Payment[]
-  jobs          TranscriptionJob[]
-  ledgerEntries WalletLedger[]
+  id                          String            @id @default(cuid())
+  name                        String
+  email                       String            @unique
+  role                        UserRole          @default(customer)
+  passwordHash                String            @map("password_hash")
+  sessionVersion              Int               @default(0) @map("session_version")
+  emailVerifiedAt             DateTime?         @map("email_verified_at")
+  emailVerificationToken      String?           @unique @map("email_verification_token")
+  emailVerificationExpiresAt  DateTime?         @map("email_verification_expires_at")
+  passwordResetToken          String?           @unique @map("password_reset_token")
+  passwordResetExpiresAt      DateTime?         @map("password_reset_expires_at")
+  createdAt                   DateTime          @default(now()) @map("created_at")
+  updatedAt                   DateTime          @updatedAt @map("updated_at")
+  wallet                      Wallet?
+  payments                    Payment[]
+  jobs                        TranscriptionJob[]
+  ledgerEntries               WalletLedger[]
+  supportRequestedThreads     SupportThread[]   @relation("SupportRequester")
+  supportAssignedThreads      SupportThread[]   @relation("SupportAssignee")
+  supportMessages             SupportMessage[]  @relation("SupportMessageAuthor")
+  supportNotes                SupportInternalNote[] @relation("SupportInternalNoteAuthor")
 
   @@map("users")
 }
@@ -109,23 +187,29 @@ model Payment {
 }
 
 model TranscriptionJob {
-  id             String              @id @default(cuid())
-  userId         String              @map("user_id")
-  status         JobStatus
-  sourceObjectKey String             @map("source_object_key")
-  language       String
-  durationSeconds Int?               @map("duration_seconds")
-  pricePerMinute Decimal             @db.Decimal(12, 6) @map("price_per_minute")
-  chargeAmount   Decimal?            @db.Decimal(12, 6) @map("charge_amount")
-  errorCode      String?             @map("error_code")
-  errorMessage   String?             @map("error_message")
-  createdAt      DateTime            @default(now()) @map("created_at")
-  updatedAt      DateTime            @updatedAt @map("updated_at")
-  completedAt    DateTime?           @map("completed_at")
-  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  chunks         TranscriptionChunk[]
-  outputs        JobOutput[]
-  ledgerEntries  WalletLedger[]
+  id                       String                 @id @default(cuid())
+  userId                   String                 @map("user_id")
+  status                   JobStatus
+  sourceObjectKey          String                 @map("source_object_key")
+  language                 String
+  translationTargetLanguage String?               @map("translation_target_language")
+  diarizationEnabled       Boolean                @default(true) @map("diarization_enabled")
+  generatePdf              Boolean                @default(true) @map("generate_pdf")
+  originalTranscriptStatus TranscriptStatus       @default(pending) @map("original_transcript_status")
+  translatedTranscriptStatus TranscriptStatus?    @map("translated_transcript_status")
+  durationSeconds          Int?                   @map("duration_seconds")
+  pricePerMinute           Decimal                @db.Decimal(12, 6) @map("price_per_minute")
+  chargeAmount             Decimal?               @db.Decimal(12, 6) @map("charge_amount")
+  errorCode                String?                @map("error_code")
+  errorMessage             String?                @map("error_message")
+  createdAt                DateTime               @default(now()) @map("created_at")
+  updatedAt                DateTime               @updatedAt @map("updated_at")
+  completedAt              DateTime?              @map("completed_at")
+  user                     User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chunks                   TranscriptionChunk[]
+  outputs                  JobOutput[]
+  transcripts              TranscriptionTranscript[]
+  ledgerEntries            WalletLedger[]
 
   @@index([userId, createdAt])
   @@index([status, createdAt])
@@ -150,14 +234,122 @@ model TranscriptionChunk {
 }
 
 model JobOutput {
-  id        String       @id @default(cuid())
-  jobId     String       @map("job_id")
+  id        String            @id @default(cuid())
+  jobId     String            @map("job_id")
+  variant   TranscriptVariant @default(original)
   format    OutputFormat
-  objectKey String       @map("object_key")
-  sizeBytes Int          @map("size_bytes")
-  createdAt DateTime     @default(now()) @map("created_at")
-  job       TranscriptionJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  language  String?           @map("language")
+  objectKey String            @map("object_key")
+  sizeBytes Int               @map("size_bytes")
+  createdAt DateTime          @default(now()) @map("created_at")
+  job       TranscriptionJob  @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
-  @@unique([jobId, format])
+  @@unique([jobId, variant, format])
   @@map("job_outputs")
+}
+
+model TranscriptionTranscript {
+  id             String             @id @default(cuid())
+  jobId          String             @map("job_id")
+  variant        TranscriptVariant
+  kind           TranscriptKind
+  language       String
+  status         TranscriptStatus
+  revision       Int                @default(1)
+  sourceRevision Int?               @map("source_revision")
+  errorCode      String?            @map("error_code")
+  errorMessage   String?            @map("error_message")
+  publishedAt    DateTime?          @map("published_at")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+  job            TranscriptionJob   @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  segments       TranscriptSegment[]
+
+  @@unique([jobId, variant])
+  @@map("transcription_transcripts")
+}
+
+model TranscriptSegment {
+  id                String                  @id @default(cuid())
+  transcriptId      String                  @map("transcript_id")
+  revision          Int
+  segmentIndex      Int                     @map("segment_index")
+  startSec          Decimal?                @db.Decimal(12, 3) @map("start_sec")
+  endSec            Decimal?                @db.Decimal(12, 3) @map("end_sec")
+  text              String                  @db.Text
+  speakerLabel      String?                 @map("speaker_label")
+  speakerConfidence Decimal?                @db.Decimal(5, 4) @map("speaker_confidence")
+  language          String
+  kind              String                  @default("speech")
+  status            TranscriptSegmentStatus @default(active)
+  createdAt         DateTime                @default(now()) @map("created_at")
+  updatedAt         DateTime                @updatedAt @map("updated_at")
+  transcript        TranscriptionTranscript @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+
+  @@unique([transcriptId, revision, segmentIndex])
+  @@index([transcriptId, revision, segmentIndex])
+  @@map("transcript_segments")
+}
+
+model SupportThread {
+  id                  String                 @id @default(cuid())
+  channel             SupportThreadChannel
+  status              SupportThreadStatus    @default(new)
+  priority            SupportThreadPriority  @default(normal)
+  category            SupportTicketCategory
+  subject             String
+  requesterUserId     String?                @map("requester_user_id")
+  requesterName       String?                @map("requester_name")
+  requesterEmail      String                 @map("requester_email")
+  assigneeUserId      String?                @map("assignee_user_id")
+  customerLastViewedAt DateTime?             @map("customer_last_viewed_at")
+  staffLastViewedAt   DateTime?              @map("staff_last_viewed_at")
+  lastCustomerMessageAt DateTime?            @map("last_customer_message_at")
+  lastStaffMessageAt  DateTime?              @map("last_staff_message_at")
+  createdAt           DateTime               @default(now()) @map("created_at")
+  updatedAt           DateTime               @updatedAt @map("updated_at")
+  resolvedAt          DateTime?              @map("resolved_at")
+  closedAt            DateTime?              @map("closed_at")
+  requester           User?                  @relation("SupportRequester", fields: [requesterUserId], references: [id], onDelete: SetNull)
+  assignee            User?                  @relation("SupportAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
+  messages            SupportMessage[]
+  notes               SupportInternalNote[]
+
+  @@index([requesterUserId, createdAt])
+  @@index([assigneeUserId, status, updatedAt])
+  @@index([status, updatedAt])
+  @@index([lastCustomerMessageAt])
+  @@index([lastStaffMessageAt])
+  @@index([requesterEmail])
+  @@map("support_threads")
+}
+
+model SupportMessage {
+  id            String                        @id @default(cuid())
+  threadId      String                        @map("thread_id")
+  authorRole    SupportMessageAuthorRole      @map("author_role")
+  authorUserId  String?                       @map("author_user_id")
+  body          String                        @db.Text
+  deliveryChannel SupportMessageDeliveryChannel @map("delivery_channel")
+  isPublic      Boolean                       @default(true) @map("is_public")
+  createdAt     DateTime                      @default(now()) @map("created_at")
+  thread        SupportThread                 @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  author        User?                         @relation("SupportMessageAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
+
+  @@index([threadId, createdAt])
+  @@map("support_messages")
+}
+
+model SupportInternalNote {
+  id           String         @id @default(cuid())
+  threadId     String         @map("thread_id")
+  authorUserId String         @map("author_user_id")
+  body         String         @db.Text
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+  thread       SupportThread  @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  author       User           @relation("SupportInternalNoteAuthor", fields: [authorUserId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
+  @@map("support_internal_notes")
 }

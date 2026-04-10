@@ -10,9 +10,11 @@ import { Prisma, PrismaClient } from "@prisma/client";
 import { Job, Queue, QueueEvents, Worker } from "bullmq";
 import {
   JOB_STATUSES,
-  OUTPUT_FORMATS,
   TRANSCRIPTION_JOB_NAME,
-  type JobStatus
+  type JobStatus,
+  type OutputFormat,
+  type TranscriptStatus,
+  type TranscriptVariant
 } from "@voxora/shared";
 import { z } from "zod";
 import {
@@ -20,11 +22,21 @@ import {
   hasAnyOciConfig
 } from "./lib/object-storage";
 import {
-  renderSrtText,
-  renderTranscriptText,
+  isDiarizeModel,
   transcribeWithOpenAi,
   type WhisperSegment
 } from "./lib/whisper";
+import {
+  applyDiarizationToSegments,
+  callDiarizerService
+} from "./lib/diarizer";
+import {
+  renderPdfBuffer,
+  renderSrtText,
+  renderTranscriptText,
+  type TranscriptArtifactSegment
+} from "./lib/transcript-artifacts";
+import { translateSegments } from "./lib/translation";
 
 const envCandidates = [
   resolve(process.cwd(), ".env"),
@@ -58,10 +70,14 @@ const envSchema = z.object({
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_BASE_URL: z.string().url().default("https://api.openai.com/v1"),
   OPENAI_WHISPER_MODEL: z.string().default("whisper-1"),
+  OPENAI_DIARIZE_FALLBACK_MODEL: z.string().default("gpt-4o-transcribe"),
+  OPENAI_TRANSLATION_MODEL: z.string().default("gpt-4.1-mini"),
+  DIARIZER_URL: z.string().url().optional(),
+  DIARIZER_TIMEOUT_MS: z.coerce.number().int().min(5000).max(7200000).default(1800000),
   OPENAI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(900000).default(300000),
   OPENAI_MAX_FILE_BYTES: z.coerce.number().int().min(1024).default(26214400),
-  TRANSCRIPTION_CHUNK_TARGET_SECONDS: z.coerce.number().int().min(30).max(7200).default(600),
-  TRANSCRIPTION_CHUNK_OVERLAP_SECONDS: z.coerce.number().min(0).max(30).default(1),
+  TRANSCRIPTION_CHUNK_TARGET_SECONDS: z.coerce.number().int().min(30).max(7200).default(300),
+  TRANSCRIPTION_CHUNK_OVERLAP_SECONDS: z.coerce.number().min(0).max(30).default(5),
   TRANSCRIPTION_RETRY_DELAY_MS: z.coerce.number().int().min(100).max(600000).default(2000),
   TRANSCRIPTION_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
   RAW_UPLOAD_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(7),
@@ -90,11 +106,16 @@ const openAiApiKey =
 const whisperProvider =
   env.WHISPER_PROVIDER === "openai" && !openAiApiKey ? "simulation" : env.WHISPER_PROVIDER;
 
+type QueueTaskType = "transcription" | "refresh-original" | "translation";
+
 type TranscriptionJobData = {
   jobId: string;
   userId: string;
-  sourceObjectKey: string;
+  taskType: QueueTaskType;
+  sourceObjectKey?: string;
   language?: string;
+  sourceRevision?: number;
+  transcriptionHints?: string;
 };
 
 type TranscriptionDlqData = {
@@ -230,6 +251,381 @@ function normalizeProviderLanguage(language?: string) {
   }
 
   return baseLanguage;
+}
+
+type ManagedTranscriptSegment = TranscriptArtifactSegment & {
+  language: string;
+  kind: string;
+  speakerConfidence: number | null;
+};
+
+type StoredTranscript = Prisma.TranscriptionTranscriptGetPayload<{
+  include: { segments: true };
+}>;
+
+function buildQueueJobId(jobId: string, taskType: QueueTaskType, sourceRevision?: number) {
+  if (taskType === "transcription") {
+    return jobId;
+  }
+  return `${jobId}.${taskType}.${sourceRevision ?? Date.now()}`;
+}
+
+function buildQueueJobOptions(jobId: string, taskType: QueueTaskType, sourceRevision?: number) {
+  return {
+    jobId: buildQueueJobId(jobId, taskType, sourceRevision),
+    attempts: taskType === "translation" ? 1 : env.TRANSCRIPTION_MAX_ATTEMPTS,
+    backoff: {
+      type: "exponential" as const,
+      delay: env.TRANSCRIPTION_RETRY_DELAY_MS
+    },
+    removeOnComplete: 100,
+    removeOnFail: 200
+  };
+}
+
+function getOutputObjectKey(
+  userId: string,
+  jobId: string,
+  variant: TranscriptVariant,
+  format: OutputFormat
+) {
+  return `outputs/${userId}/${jobId}.${variant}.${format}`;
+}
+
+function getOutputContentType(format: OutputFormat) {
+  switch (format) {
+    case "srt":
+      return "application/x-subrip; charset=utf-8";
+    case "pdf":
+      return "application/pdf";
+    case "txt":
+    default:
+      return "text/plain; charset=utf-8";
+  }
+}
+
+async function putOutputObject(
+  objectKey: string,
+  content: string | Buffer,
+  format: OutputFormat
+) {
+  if (objectStorage) {
+    await objectStorage.putObject(objectKey, content, getOutputContentType(format));
+    return;
+  }
+
+  const outputPath = resolveStoragePath(outputsRootDir, objectKey);
+  if (!outputPath) {
+    throw new Error("Invalid output path.");
+  }
+
+  await mkdir(dirname(outputPath), { recursive: true });
+  if (Buffer.isBuffer(content)) {
+    await writeFile(outputPath, content);
+  } else {
+    await writeFile(outputPath, content, "utf8");
+  }
+}
+
+async function deleteOutputObject(objectKey: string) {
+  try {
+    if (objectStorage) {
+      await objectStorage.deleteObject(objectKey);
+      return;
+    }
+    const outputPath = resolveStoragePath(outputsRootDir, objectKey);
+    if (!outputPath || !existsSync(outputPath)) {
+      return;
+    }
+    await unlink(outputPath);
+  } catch {
+    // Best-effort cleanup; stale outputs should not block the pipeline.
+  }
+}
+
+function assignSpeakerLabels(segments: WhisperSegment[], diarizationEnabled: boolean) {
+  if (!diarizationEnabled) {
+    return segments.map((segment, index) => ({
+      segmentIndex: index,
+      startSec: segment.startSec,
+      endSec: segment.endSec,
+      text: segment.text.trim(),
+      speakerLabel: null,
+      speakerConfidence: null,
+      language: "",
+      kind: "speech"
+    }));
+  }
+
+  let currentSpeaker = 1;
+  let nextSpeakerId = 1;
+  let segmentsSinceLastSwitch = 0;
+  return segments.map((segment, index) => {
+    const previous = index > 0 ? segments[index - 1] : null;
+    const previousEnd = previous?.endSec ?? previous?.startSec ?? 0;
+    const currentStart = segment.startSec ?? previousEnd;
+    const gap = currentStart - previousEnd;
+    const normalizedText = segment.text.trim();
+    const endsStrongly = /[.!?]\s*$/.test(previous?.text ?? "");
+
+    if (index > 0) {
+      const shouldIntroduceSpeaker = gap >= 3.2 && segmentsSinceLastSwitch >= 1 && nextSpeakerId < 4;
+      const shouldRotateSpeaker = gap >= 1.8 && endsStrongly && segmentsSinceLastSwitch >= 2;
+
+      if (shouldIntroduceSpeaker) {
+        nextSpeakerId += 1;
+        currentSpeaker = nextSpeakerId;
+        segmentsSinceLastSwitch = 0;
+      } else if (shouldRotateSpeaker && nextSpeakerId > 1) {
+        currentSpeaker = currentSpeaker === nextSpeakerId ? 1 : currentSpeaker + 1;
+        segmentsSinceLastSwitch = 0;
+      }
+    }
+
+    segmentsSinceLastSwitch += 1;
+
+    return {
+      segmentIndex: index,
+      startSec: segment.startSec,
+      endSec: segment.endSec,
+      text: normalizedText,
+      speakerLabel: `Falante ${currentSpeaker}`,
+      speakerConfidence: null,
+      language: "",
+      kind: "speech"
+    };
+  });
+}
+
+function buildOriginalSegments(
+  segments: WhisperSegment[],
+  fallbackText: string,
+  language: string,
+  durationSeconds: number | null,
+  diarizationEnabled: boolean
+): ManagedTranscriptSegment[] {
+  const normalizedSegments = segments.length > 0
+    ? segments
+    : [
+        {
+          chunkIndex: 0,
+          startSec: 0,
+          endSec: durationSeconds,
+          text: fallbackText || "Transcrição concluída sem segmentos."
+        }
+      ];
+
+  // When the model already returned speaker labels (diarize model), use them directly
+  // instead of running the heuristic speaker assignment.
+  const hasDiarizedLabels = normalizedSegments.some((s) => s.speakerLabel != null);
+  if (hasDiarizedLabels) {
+    return normalizedSegments.map((segment, index) => ({
+      segmentIndex: index,
+      startSec: segment.startSec,
+      endSec: segment.endSec,
+      text: segment.text.trim(),
+      speakerLabel: segment.speakerLabel ?? null,
+      speakerConfidence: null,
+      language,
+      kind: "speech"
+    }));
+  }
+
+  return assignSpeakerLabels(normalizedSegments, diarizationEnabled).map((segment) => ({
+    ...segment,
+    language
+  }));
+}
+
+function toArtifactSegments(
+  segments: Array<{
+    segmentIndex: number;
+    startSec: Prisma.Decimal | null;
+    endSec: Prisma.Decimal | null;
+    text: string;
+    speakerLabel: string | null;
+  }>
+): TranscriptArtifactSegment[] {
+  return segments
+    .slice()
+    .sort((a, b) => a.segmentIndex - b.segmentIndex)
+    .map((segment) => ({
+      segmentIndex: segment.segmentIndex,
+      startSec: segment.startSec ? Number(segment.startSec.toString()) : null,
+      endSec: segment.endSec ? Number(segment.endSec.toString()) : null,
+      text: segment.text,
+      speakerLabel: segment.speakerLabel
+    }));
+}
+
+async function fetchTranscript(jobId: string, variant: TranscriptVariant) {
+  return prisma.transcriptionTranscript.findUnique({
+    where: {
+      jobId_variant: {
+        jobId,
+        variant
+      }
+    },
+    include: {
+      segments: true
+    }
+  });
+}
+
+async function replaceTranscriptSegments(params: {
+  tx: Prisma.TransactionClient;
+  transcriptId: string;
+  revision: number;
+  segments: ManagedTranscriptSegment[];
+}) {
+  await params.tx.transcriptSegment.deleteMany({
+    where: {
+      transcriptId: params.transcriptId,
+      revision: params.revision
+    }
+  });
+
+  if (params.segments.length === 0) {
+    return;
+  }
+
+  await params.tx.transcriptSegment.createMany({
+    data: params.segments.map((segment) => ({
+      transcriptId: params.transcriptId,
+      revision: params.revision,
+      segmentIndex: segment.segmentIndex,
+      startSec:
+        segment.startSec !== null ? new Prisma.Decimal(segment.startSec.toFixed(3)) : null,
+      endSec:
+        segment.endSec !== null ? new Prisma.Decimal(segment.endSec.toFixed(3)) : null,
+      text: segment.text,
+      speakerLabel: segment.speakerLabel ?? null,
+      speakerConfidence:
+        segment.speakerConfidence !== null
+          ? new Prisma.Decimal(segment.speakerConfidence.toFixed(4))
+          : null,
+      language: segment.language,
+      kind: segment.kind,
+      status: "active"
+    }))
+  });
+}
+
+async function deleteOutputsForVariant(jobId: string, variant: TranscriptVariant) {
+  const existingOutputs = await prisma.jobOutput.findMany({
+    where: { jobId, variant }
+  });
+
+  await Promise.all(existingOutputs.map((output) => deleteOutputObject(output.objectKey)));
+  await prisma.jobOutput.deleteMany({
+    where: { jobId, variant }
+  });
+}
+
+async function publishOutputsForTranscript(params: {
+  jobId: string;
+  userId: string;
+  sourceObjectKey: string;
+  variant: TranscriptVariant;
+  language: string;
+  durationSeconds: number | null;
+  generatePdf: boolean;
+  transcript: StoredTranscript;
+}) {
+  const artifactSegments = toArtifactSegments(params.transcript.segments).filter(
+    (segment) => segment.text.trim().length > 0
+  );
+  const variantLabel = params.variant === "original" ? "Original" : "Traduzido";
+
+  const outputs: Array<{
+    format: OutputFormat;
+    objectKey: string;
+    content: string | Buffer;
+    sizeBytes: number;
+  }> = [];
+
+  const txtContent = renderTranscriptText({
+    id: params.jobId,
+    sourceObjectKey: params.sourceObjectKey,
+    language: params.language,
+    variantLabel,
+    durationSeconds: params.durationSeconds,
+    segments: artifactSegments
+  });
+  outputs.push({
+    format: "txt",
+    objectKey: getOutputObjectKey(params.userId, params.jobId, params.variant, "txt"),
+    content: txtContent,
+    sizeBytes: Buffer.byteLength(txtContent, "utf8")
+  });
+
+  const srtContent = renderSrtText(artifactSegments);
+  outputs.push({
+    format: "srt",
+    objectKey: getOutputObjectKey(params.userId, params.jobId, params.variant, "srt"),
+    content: srtContent,
+    sizeBytes: Buffer.byteLength(srtContent, "utf8")
+  });
+
+  if (params.generatePdf) {
+    const pdfContent = await renderPdfBuffer({
+      title: `${variantLabel} · ${params.jobId}`,
+      variantLabel,
+      language: params.language,
+      durationSeconds: params.durationSeconds,
+      segments: artifactSegments
+    });
+    outputs.push({
+      format: "pdf",
+      objectKey: getOutputObjectKey(params.userId, params.jobId, params.variant, "pdf"),
+      content: pdfContent,
+      sizeBytes: pdfContent.byteLength
+    });
+  }
+
+  for (const output of outputs) {
+    await putOutputObject(output.objectKey, output.content, output.format);
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.jobOutput.deleteMany({
+      where: {
+        jobId: params.jobId,
+        variant: params.variant
+      }
+    });
+
+    await tx.jobOutput.createMany({
+      data: outputs.map((output) => ({
+        jobId: params.jobId,
+        variant: params.variant,
+        format: output.format,
+        language: params.language,
+        objectKey: output.objectKey,
+        sizeBytes: output.sizeBytes
+      }))
+    });
+
+    await tx.transcriptionTranscript.update({
+      where: {
+        id: params.transcript.id
+      },
+      data: {
+        status: "ready",
+        errorCode: null,
+        errorMessage: null,
+        publishedAt: new Date()
+      }
+    });
+  });
+}
+
+async function enqueueTranscriptTask(task: TranscriptionJobData) {
+  await queue.add(
+    TRANSCRIPTION_JOB_NAME,
+    task,
+    buildQueueJobOptions(task.jobId, task.taskType, task.sourceRevision)
+  );
 }
 
 class InsufficientCreditsError extends Error {
@@ -559,6 +955,8 @@ async function transcribeOpenAiWithChunking(params: {
   userId: string;
   sourceObjectKey: string;
   language?: string;
+  transcriptionHints?: string;
+  model?: string;
   audioBuffer: Buffer;
   durationSeconds: number;
   requestId: string;
@@ -588,6 +986,7 @@ async function transcribeOpenAiWithChunking(params: {
   try {
     const mergedSegments: WhisperSegment[] = [];
     const chunkTexts: string[] = [];
+    let previousChunkTailText = "";
 
     logWorker("info", "Starting chunked transcription.", {
       request_id: params.requestId,
@@ -617,17 +1016,31 @@ async function transcribeOpenAiWithChunking(params: {
         );
       }
 
+      // Build prompt: user hints + tail of previous chunk (for inter-chunk context)
+      const promptParts: string[] = [];
+      if (params.transcriptionHints && params.transcriptionHints.trim().length > 0) {
+        promptParts.push(params.transcriptionHints.trim());
+      }
+      if (previousChunkTailText.length > 0) {
+        promptParts.push(previousChunkTailText);
+      }
+      const chunkPrompt = promptParts.join(" ").slice(-500) || undefined;
+
       const chunkTranscription = await transcribeWithOpenAi({
         apiKey: getOpenAiApiKey(),
         baseUrl: env.OPENAI_BASE_URL,
-        model: env.OPENAI_WHISPER_MODEL,
+        model: params.model ?? env.OPENAI_WHISPER_MODEL,
         fileName: `chunk-${chunkWindow.index}.mp3`,
         language: providerLanguage,
+        prompt: chunkPrompt,
         audioBuffer: chunkBuffer,
         timeoutMs: env.OPENAI_TIMEOUT_MS
       });
-      if (chunkTranscription.text.trim().length > 0) {
-        chunkTexts.push(chunkTranscription.text.trim());
+      const chunkText = chunkTranscription.text.trim();
+      if (chunkText.length > 0) {
+        chunkTexts.push(chunkText);
+        // Keep last ~200 chars as context seed for the next chunk
+        previousChunkTailText = chunkText.slice(-200);
       }
 
       for (const segment of chunkTranscription.segments) {
@@ -909,6 +1322,258 @@ async function cleanupExpiredOutputs(trigger: "startup" | "interval") {
   }
 }
 
+async function handleRefreshOriginalTask(jobData: TranscriptionJobData) {
+  const jobEntity = await prisma.transcriptionJob.findUnique({
+    where: { id: jobData.jobId }
+  });
+  if (!jobEntity || jobEntity.userId !== jobData.userId) {
+    throw new Error("Job not found or ownership mismatch.");
+  }
+
+  const originalTranscript = await fetchTranscript(jobEntity.id, "original");
+  if (!originalTranscript) {
+    throw new Error("Original transcript not found.");
+  }
+
+  await publishOutputsForTranscript({
+    jobId: jobEntity.id,
+    userId: jobEntity.userId,
+    sourceObjectKey: jobEntity.sourceObjectKey,
+    variant: "original",
+    language: originalTranscript.language,
+    durationSeconds: jobEntity.durationSeconds,
+    generatePdf: jobEntity.generatePdf,
+    transcript: originalTranscript
+  });
+
+  await prisma.transcriptionJob.update({
+    where: { id: jobEntity.id },
+    data: {
+      originalTranscriptStatus: "ready"
+    }
+  });
+
+  if (jobEntity.translationTargetLanguage) {
+    await prisma.$transaction(async (tx) => {
+      await tx.transcriptionJob.update({
+        where: { id: jobEntity.id },
+        data: {
+          translatedTranscriptStatus: "pending"
+        }
+      });
+      await tx.transcriptionTranscript.updateMany({
+        where: {
+          jobId: jobEntity.id,
+          variant: "translated"
+        },
+        data: {
+          status: "pending",
+          errorCode: null,
+          errorMessage: null,
+          sourceRevision: originalTranscript.revision,
+          revision: originalTranscript.revision
+        }
+      });
+    });
+
+    try {
+      await enqueueTranscriptTask({
+        jobId: jobEntity.id,
+        userId: jobEntity.userId,
+        taskType: "translation",
+        sourceRevision: originalTranscript.revision
+      });
+    } catch (error) {
+      await prisma.$transaction(async (tx) => {
+        await tx.transcriptionJob.update({
+          where: { id: jobEntity.id },
+          data: {
+            translatedTranscriptStatus: "failed"
+          }
+        });
+        await tx.transcriptionTranscript.updateMany({
+          where: {
+            jobId: jobEntity.id,
+            variant: "translated"
+          },
+          data: {
+            status: "failed",
+            errorCode: "QUEUE_ENQUEUE_FAILED",
+            errorMessage: "Could not enqueue translation regeneration."
+          }
+        });
+      });
+      logWorker("error", "Could not enqueue translation after original refresh.", {
+        job_id: jobEntity.id,
+        user_id: jobEntity.userId,
+        revision: originalTranscript.revision,
+        error: toErrorMessage(error)
+      });
+    }
+  }
+}
+
+async function handleTranslationTask(jobData: TranscriptionJobData) {
+  const jobEntity = await prisma.transcriptionJob.findUnique({
+    where: { id: jobData.jobId }
+  });
+  if (!jobEntity || jobEntity.userId !== jobData.userId) {
+    throw new Error("Job not found or ownership mismatch.");
+  }
+  if (!jobEntity.translationTargetLanguage) {
+    throw new Error("Translation target language is not configured for this job.");
+  }
+
+  const originalTranscript = await fetchTranscript(jobEntity.id, "original");
+  if (!originalTranscript) {
+    throw new Error("Original transcript not found.");
+  }
+
+  const requestedRevision = jobData.sourceRevision ?? originalTranscript.revision;
+  if (requestedRevision !== originalTranscript.revision) {
+    return {
+      status: "skipped",
+      reason: "Superseded by a newer original transcript revision."
+    };
+  }
+
+  const sourceSegments = originalTranscript.segments
+    .filter((segment) => segment.revision === originalTranscript.revision)
+    .sort((a, b) => a.segmentIndex - b.segmentIndex);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.transcriptionTranscript.upsert({
+      where: {
+        jobId_variant: {
+          jobId: jobEntity.id,
+          variant: "translated"
+        }
+      },
+      create: {
+        jobId: jobEntity.id,
+        variant: "translated",
+        kind: "translation",
+        language: jobEntity.translationTargetLanguage!,
+        status: "processing",
+        revision: originalTranscript.revision,
+        sourceRevision: originalTranscript.revision
+      },
+      update: {
+        language: jobEntity.translationTargetLanguage!,
+        status: "processing",
+        revision: originalTranscript.revision,
+        sourceRevision: originalTranscript.revision,
+        errorCode: null,
+        errorMessage: null
+      }
+    });
+
+    await tx.transcriptionJob.update({
+      where: { id: jobEntity.id },
+      data: {
+        translatedTranscriptStatus: "processing"
+      }
+    });
+  });
+
+  const translatedItems = await translateSegments({
+    apiKey: openAiApiKey,
+    baseUrl: env.OPENAI_BASE_URL,
+    model: env.OPENAI_TRANSLATION_MODEL,
+    targetLanguage: jobEntity.translationTargetLanguage,
+    segments: sourceSegments.map((segment) => ({
+      segmentIndex: segment.segmentIndex,
+      text: segment.text
+    })),
+    timeoutMs: env.OPENAI_TIMEOUT_MS,
+    simulationMode: whisperProvider === "simulation"
+  });
+
+  const translatedTranscript = await prisma.transcriptionTranscript.upsert({
+    where: {
+      jobId_variant: {
+        jobId: jobEntity.id,
+        variant: "translated"
+      }
+    },
+    create: {
+      jobId: jobEntity.id,
+      variant: "translated",
+      kind: "translation",
+      language: jobEntity.translationTargetLanguage,
+      status: "processing",
+      revision: originalTranscript.revision,
+      sourceRevision: originalTranscript.revision
+    },
+    update: {
+      language: jobEntity.translationTargetLanguage,
+      status: "processing",
+      revision: originalTranscript.revision,
+      sourceRevision: originalTranscript.revision,
+      errorCode: null,
+      errorMessage: null
+    }
+  });
+
+  const translatedSegments: ManagedTranscriptSegment[] = translatedItems.map((segment) => {
+    const sourceSegment = sourceSegments.find((item) => item.segmentIndex === segment.segmentIndex);
+    if (!sourceSegment) {
+      throw new Error(`Source segment ${segment.segmentIndex} not found for translation.`);
+    }
+
+    return {
+      segmentIndex: segment.segmentIndex,
+      startSec: sourceSegment.startSec ? Number(sourceSegment.startSec.toString()) : null,
+      endSec: sourceSegment.endSec ? Number(sourceSegment.endSec.toString()) : null,
+      text: segment.text,
+      speakerLabel: sourceSegment.speakerLabel,
+      speakerConfidence: sourceSegment.speakerConfidence
+        ? Number(sourceSegment.speakerConfidence.toString())
+        : null,
+      language: jobEntity.translationTargetLanguage!,
+      kind: sourceSegment.kind
+    };
+  });
+
+  await prisma.$transaction(async (tx) => {
+    await replaceTranscriptSegments({
+      tx,
+      transcriptId: translatedTranscript.id,
+      revision: translatedTranscript.revision,
+      segments: translatedSegments
+    });
+  });
+
+  const refreshedTranslated = await fetchTranscript(jobEntity.id, "translated");
+  if (!refreshedTranslated) {
+    throw new Error("Translated transcript could not be loaded after persistence.");
+  }
+
+  await publishOutputsForTranscript({
+    jobId: jobEntity.id,
+    userId: jobEntity.userId,
+    sourceObjectKey: jobEntity.sourceObjectKey,
+    variant: "translated",
+    language: jobEntity.translationTargetLanguage,
+    durationSeconds: jobEntity.durationSeconds,
+    generatePdf: jobEntity.generatePdf,
+    transcript: refreshedTranslated
+  });
+
+  await prisma.transcriptionJob.update({
+    where: { id: jobEntity.id },
+    data: {
+      translatedTranscriptStatus: "ready"
+    }
+  });
+
+  return {
+    status: "ready",
+    variant: "translated",
+    revision: refreshedTranslated.revision
+  };
+}
+
 const worker = new Worker<TranscriptionJobData>(
   env.TRANSCRIPTION_QUEUE,
   async (job: Job<TranscriptionJobData>) => {
@@ -916,6 +1581,7 @@ const worker = new Worker<TranscriptionJobData>(
     const processingStatus: JobStatus = JOB_STATUSES[3];
     const completedStatus: JobStatus = JOB_STATUSES[4];
     const failedStatus: JobStatus = JOB_STATUSES[5];
+    const currentTaskType = job.data.taskType ?? "transcription";
     let heldChargeAmount: Prisma.Decimal | null = null;
     const processingRequestId = randomUUID();
     const configuredAttempts =
@@ -929,6 +1595,7 @@ const worker = new Worker<TranscriptionJobData>(
         queue_job_id: job.id,
         job_id: job.data.jobId,
         user_id: job.data.userId,
+        task_type: currentTaskType,
         attempt: job.attemptsMade + 1,
         max_attempts: configuredAttempts
       });
@@ -942,10 +1609,19 @@ const worker = new Worker<TranscriptionJobData>(
         throw new Error("Job not found or ownership mismatch.");
       }
 
+      if (currentTaskType === "refresh-original") {
+        return await handleRefreshOriginalTask(job.data);
+      }
+
+      if (currentTaskType === "translation") {
+        return await handleTranslationTask(job.data);
+      }
+
       await prisma.transcriptionJob.update({
         where: { id: jobEntity.id },
         data: {
           status: validatingStatus,
+          originalTranscriptStatus: "processing",
           errorCode: null,
           errorMessage: null
         }
@@ -1027,6 +1703,102 @@ const worker = new Worker<TranscriptionJobData>(
             text: transcriptionText
           }
         ];
+      } else if (isDiarizeModel(env.OPENAI_WHISPER_MODEL)) {
+        // gpt-4o-transcribe-diarize handles its own audio segmentation via
+        // chunking_strategy: "auto"; manual chunking would break speaker continuity.
+        const fitsForDiarize = audioBuffer.byteLength <= env.OPENAI_MAX_FILE_BYTES;
+
+        if (!fitsForDiarize) {
+          // File too large for diarize model — fall back to chunked transcription
+          // with a standard model. Speaker labels will be heuristic in this case.
+          if (durationSeconds === null || !Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+            throw new Error(
+              "Arquivo exige chunking mas a duração não pôde ser calculada."
+            );
+          }
+          logWorker("warn", "Audio too large for diarize model; falling back to chunked transcription.", {
+            request_id: processingRequestId,
+            job_id: jobEntity.id,
+            user_id: jobEntity.userId,
+            bytes: audioBuffer.byteLength,
+            max_bytes: env.OPENAI_MAX_FILE_BYTES,
+            fallback_model: env.OPENAI_DIARIZE_FALLBACK_MODEL
+          });
+          const chunked = await transcribeOpenAiWithChunking({
+            jobId: jobEntity.id,
+            userId: jobEntity.userId,
+            sourceObjectKey: jobEntity.sourceObjectKey,
+            language: jobEntity.language,
+            transcriptionHints: job.data.transcriptionHints,
+            model: env.OPENAI_DIARIZE_FALLBACK_MODEL,
+            audioBuffer,
+            durationSeconds,
+            requestId: processingRequestId
+          });
+          transcriptionText = chunked.text.trim();
+          durationSeconds = chunked.durationSeconds ?? durationSeconds;
+          segments = chunked.segments;
+
+          // Stage 2: run pyannote diarization on the original audio and merge
+          // speaker labels into the transcript segments by timestamp overlap.
+          if (env.DIARIZER_URL) {
+            try {
+              logWorker("info", "Running two-stage diarization via diarizer service.", {
+                request_id: processingRequestId,
+                job_id: jobEntity.id,
+                user_id: jobEntity.userId,
+                diarizer_url: env.DIARIZER_URL,
+                segments: segments.length
+              });
+              const diarization = await callDiarizerService({
+                serviceUrl: env.DIARIZER_URL,
+                audioBuffer,
+                fileName: getObjectFileName(jobEntity.sourceObjectKey),
+                timeoutMs: env.DIARIZER_TIMEOUT_MS
+              });
+              segments = applyDiarizationToSegments(segments, diarization);
+              const speakerCount = new Set(diarization.map((d) => d.speaker)).size;
+              logWorker("info", "Diarization merged into segments.", {
+                request_id: processingRequestId,
+                job_id: jobEntity.id,
+                speakers_detected: speakerCount,
+                diarization_entries: diarization.length
+              });
+            } catch (diarizerError) {
+              logWorker("warn", "Diarizer service failed; falling back to heuristic speaker labels.", {
+                request_id: processingRequestId,
+                job_id: jobEntity.id,
+                error: toErrorMessage(diarizerError)
+              });
+            }
+          }
+        } else {
+          const providerLanguage = normalizeProviderLanguage(jobEntity.language);
+          const paddedBuffer = await padAudioBufferWithSilence(
+            audioBuffer,
+            getObjectFileName(jobEntity.sourceObjectKey),
+            0.5
+          );
+          logWorker("info", "Starting diarize transcription.", {
+            request_id: processingRequestId,
+            job_id: jobEntity.id,
+            user_id: jobEntity.userId,
+            model: env.OPENAI_WHISPER_MODEL,
+            bytes: paddedBuffer.byteLength
+          });
+          const transcription = await transcribeWithOpenAi({
+            apiKey: getOpenAiApiKey(),
+            baseUrl: env.OPENAI_BASE_URL,
+            model: env.OPENAI_WHISPER_MODEL,
+            fileName: getObjectFileName(jobEntity.sourceObjectKey).replace(/\.[^.]+$/, ".mp3"),
+            language: providerLanguage,
+            audioBuffer: paddedBuffer,
+            timeoutMs: env.OPENAI_TIMEOUT_MS
+          });
+          transcriptionText = transcription.text.trim();
+          durationSeconds = transcription.durationSeconds ?? durationSeconds;
+          segments = transcription.segments;
+        }
       } else {
         const mustChunkBySize = audioBuffer.byteLength > env.OPENAI_MAX_FILE_BYTES;
         const shouldChunkByDuration =
@@ -1043,6 +1815,7 @@ const worker = new Worker<TranscriptionJobData>(
             userId: jobEntity.userId,
             sourceObjectKey: jobEntity.sourceObjectKey,
             language: jobEntity.language,
+            transcriptionHints: job.data.transcriptionHints,
             audioBuffer,
             durationSeconds,
             requestId: processingRequestId
@@ -1061,8 +1834,9 @@ const worker = new Worker<TranscriptionJobData>(
             apiKey: getOpenAiApiKey(),
             baseUrl: env.OPENAI_BASE_URL,
             model: env.OPENAI_WHISPER_MODEL,
-            fileName: getObjectFileName(jobEntity.sourceObjectKey),
+            fileName: getObjectFileName(jobEntity.sourceObjectKey).replace(/\.[^.]+$/, ".mp3"),
             language: providerLanguage,
+            prompt: job.data.transcriptionHints,
             audioBuffer: paddedBuffer,
             timeoutMs: env.OPENAI_TIMEOUT_MS
           });
@@ -1072,16 +1846,13 @@ const worker = new Worker<TranscriptionJobData>(
         }
       }
 
-      if (segments.length === 0) {
-        segments = [
-          {
-            chunkIndex: 0,
-            startSec: 0,
-            endSec: durationSeconds,
-            text: transcriptionText || "Transcrição concluída sem segmentos."
-          }
-        ];
-      }
+      const originalSegments = buildOriginalSegments(
+        segments,
+        transcriptionText,
+        jobEntity.language,
+        durationSeconds,
+        jobEntity.diarizationEnabled
+      );
 
       const roundedDuration =
         durationSeconds !== null ? Math.max(1, Math.ceil(durationSeconds)) : null;
@@ -1091,42 +1862,6 @@ const worker = new Worker<TranscriptionJobData>(
           ? new Prisma.Decimal(((durationSeconds * env.PRICE_PER_MINUTE) / 60).toFixed(6))
           : null);
 
-      const txtContent = renderTranscriptText({
-        id: jobEntity.id,
-        sourceObjectKey: jobEntity.sourceObjectKey,
-        language: jobEntity.language,
-        durationSeconds,
-        segments,
-        text: transcriptionText || segments.map((segment) => segment.text).join(" ")
-      });
-      const srtContent = renderSrtText(segments);
-
-      const txtObjectKey = `outputs/${jobEntity.userId}/${jobEntity.id}.${OUTPUT_FORMATS[0]}`;
-      const srtObjectKey = `outputs/${jobEntity.userId}/${jobEntity.id}.${OUTPUT_FORMATS[1]}`;
-      if (objectStorage) {
-        await objectStorage.putObject(
-          txtObjectKey,
-          txtContent,
-          "text/plain; charset=utf-8"
-        );
-        await objectStorage.putObject(
-          srtObjectKey,
-          srtContent,
-          "application/x-subrip; charset=utf-8"
-        );
-      } else {
-        const txtOutputPath = resolveStoragePath(outputsRootDir, txtObjectKey);
-        const srtOutputPath = resolveStoragePath(outputsRootDir, srtObjectKey);
-        if (!txtOutputPath || !srtOutputPath) {
-          throw new Error("Invalid output path.");
-        }
-
-        await mkdir(dirname(txtOutputPath), { recursive: true });
-        await writeFile(txtOutputPath, txtContent, "utf8");
-        await mkdir(dirname(srtOutputPath), { recursive: true });
-        await writeFile(srtOutputPath, srtContent, "utf8");
-      }
-
       await prisma.$transaction(async (tx) => {
         await tx.transcriptionChunk.deleteMany({
           where: {
@@ -1134,9 +1869,9 @@ const worker = new Worker<TranscriptionJobData>(
           }
         });
         await tx.transcriptionChunk.createMany({
-          data: segments.map((segment) => ({
+          data: originalSegments.map((segment) => ({
             jobId: jobEntity.id,
-            chunkIndex: segment.chunkIndex,
+            chunkIndex: segment.segmentIndex,
             startSec:
               segment.startSec !== null
                 ? new Prisma.Decimal(segment.startSec.toFixed(3))
@@ -1149,43 +1884,78 @@ const worker = new Worker<TranscriptionJobData>(
           }))
         });
 
-        await tx.jobOutput.upsert({
+        const originalTranscript = await tx.transcriptionTranscript.upsert({
           where: {
-            jobId_format: {
+            jobId_variant: {
               jobId: jobEntity.id,
-              format: "txt"
+              variant: "original"
             }
           },
           create: {
             jobId: jobEntity.id,
-            format: "txt",
-            objectKey: txtObjectKey,
-            sizeBytes: Buffer.byteLength(txtContent, "utf8")
+            variant: "original",
+            kind: "transcript",
+            language: jobEntity.language,
+            status: "processing",
+            revision: 1,
+            sourceRevision: 1
           },
           update: {
-            objectKey: txtObjectKey,
-            sizeBytes: Buffer.byteLength(txtContent, "utf8")
+            language: jobEntity.language,
+            status: "processing",
+            revision: 1,
+            sourceRevision: 1,
+            errorCode: null,
+            errorMessage: null
           }
         });
 
-        await tx.jobOutput.upsert({
+        await tx.transcriptSegment.deleteMany({
           where: {
-            jobId_format: {
-              jobId: jobEntity.id,
-              format: "srt"
-            }
-          },
-          create: {
-            jobId: jobEntity.id,
-            format: "srt",
-            objectKey: srtObjectKey,
-            sizeBytes: Buffer.byteLength(srtContent, "utf8")
-          },
-          update: {
-            objectKey: srtObjectKey,
-            sizeBytes: Buffer.byteLength(srtContent, "utf8")
+            transcriptId: originalTranscript.id
           }
         });
+
+        await replaceTranscriptSegments({
+          tx,
+          transcriptId: originalTranscript.id,
+          revision: 1,
+          segments: originalSegments
+        });
+
+        if (jobEntity.translationTargetLanguage) {
+          const translatedTranscript = await tx.transcriptionTranscript.upsert({
+            where: {
+              jobId_variant: {
+                jobId: jobEntity.id,
+                variant: "translated"
+              }
+            },
+            create: {
+              jobId: jobEntity.id,
+              variant: "translated",
+              kind: "translation",
+              language: jobEntity.translationTargetLanguage,
+              status: "pending",
+              revision: 1,
+              sourceRevision: 1
+            },
+            update: {
+              language: jobEntity.translationTargetLanguage,
+              status: "pending",
+              revision: 1,
+              sourceRevision: 1,
+              errorCode: null,
+              errorMessage: null
+            }
+          });
+
+          await tx.transcriptSegment.deleteMany({
+            where: {
+              transcriptId: translatedTranscript.id
+            }
+          });
+        }
 
         if (heldChargeAmount && heldChargeAmount.gt(0)) {
           await captureReservedCreditsForJob({
@@ -1200,6 +1970,8 @@ const worker = new Worker<TranscriptionJobData>(
           where: { id: jobEntity.id },
           data: {
             status: completedStatus,
+            originalTranscriptStatus: "processing",
+            translatedTranscriptStatus: jobEntity.translationTargetLanguage ? "pending" : null,
             durationSeconds: roundedDuration,
             chargeAmount,
             completedAt: new Date(),
@@ -1209,18 +1981,80 @@ const worker = new Worker<TranscriptionJobData>(
         });
       });
 
+      const originalTranscript = await fetchTranscript(jobEntity.id, "original");
+      if (!originalTranscript) {
+        throw new Error("Original transcript could not be loaded after processing.");
+      }
+
+      await publishOutputsForTranscript({
+        jobId: jobEntity.id,
+        userId: jobEntity.userId,
+        sourceObjectKey: jobEntity.sourceObjectKey,
+        variant: "original",
+        language: originalTranscript.language,
+        durationSeconds,
+        generatePdf: jobEntity.generatePdf,
+        transcript: originalTranscript
+      });
+
+      await prisma.transcriptionJob.update({
+        where: { id: jobEntity.id },
+        data: {
+          originalTranscriptStatus: "ready",
+          translatedTranscriptStatus: jobEntity.translationTargetLanguage ? "pending" : null
+        }
+      });
+
+      if (jobEntity.translationTargetLanguage) {
+        try {
+          await enqueueTranscriptTask({
+            jobId: jobEntity.id,
+            userId: jobEntity.userId,
+            taskType: "translation",
+            sourceRevision: originalTranscript.revision
+          });
+        } catch (error) {
+          await prisma.$transaction(async (tx) => {
+            await tx.transcriptionJob.update({
+              where: { id: jobEntity.id },
+              data: {
+                translatedTranscriptStatus: "failed"
+              }
+            });
+            await tx.transcriptionTranscript.updateMany({
+              where: {
+                jobId: jobEntity.id,
+                variant: "translated"
+              },
+              data: {
+                status: "failed",
+                errorCode: "QUEUE_ENQUEUE_FAILED",
+                errorMessage: "Could not enqueue translation generation."
+              }
+            });
+          });
+          logWorker("error", "Could not enqueue translation after transcription completion.", {
+            request_id: processingRequestId,
+            job_id: jobEntity.id,
+            user_id: jobEntity.userId,
+            revision: originalTranscript.revision,
+            error: toErrorMessage(error)
+          });
+        }
+      }
+
       logWorker("info", "Job completed successfully.", {
         request_id: processingRequestId,
         queue_job_id: job.id,
         job_id: jobEntity.id,
         user_id: jobEntity.userId,
         status: completedStatus,
-        chunks: segments.length
+        chunks: originalSegments.length
       });
       return {
         status: completedStatus,
         processedAt: new Date().toISOString(),
-        chunks: segments.length
+        chunks: originalSegments.length
       };
     } catch (error) {
       const message = toErrorMessage(error);
@@ -1235,8 +2069,55 @@ const worker = new Worker<TranscriptionJobData>(
         user_id: job.data.userId,
         error_code: errorCode,
         error: message,
+        task_type: currentTaskType,
         attempt: job.attemptsMade + 1
       });
+
+      if (currentTaskType === "translation") {
+        await prisma.$transaction(async (tx) => {
+          await tx.transcriptionJob.updateMany({
+            where: { id: job.data.jobId },
+            data: {
+              translatedTranscriptStatus: "failed"
+            }
+          });
+          await tx.transcriptionTranscript.updateMany({
+            where: {
+              jobId: job.data.jobId,
+              variant: "translated"
+            },
+            data: {
+              status: "failed",
+              errorCode,
+              errorMessage: truncateForDatabase(message)
+            }
+          });
+        });
+        throw error;
+      }
+
+      if (currentTaskType === "refresh-original") {
+        await prisma.$transaction(async (tx) => {
+          await tx.transcriptionJob.updateMany({
+            where: { id: job.data.jobId },
+            data: {
+              originalTranscriptStatus: "failed"
+            }
+          });
+          await tx.transcriptionTranscript.updateMany({
+            where: {
+              jobId: job.data.jobId,
+              variant: "original"
+            },
+            data: {
+              status: "failed",
+              errorCode,
+              errorMessage: truncateForDatabase(message)
+            }
+          });
+        });
+        throw error;
+      }
 
       if (heldChargeAmount && heldChargeAmount.gt(0)) {
         const refundAmount = heldChargeAmount;
@@ -1268,7 +2149,7 @@ const worker = new Worker<TranscriptionJobData>(
           {
             jobId: job.data.jobId,
             userId: job.data.userId,
-            sourceObjectKey: job.data.sourceObjectKey,
+            sourceObjectKey: job.data.sourceObjectKey ?? "",
             language: job.data.language,
             attempts: job.attemptsMade + 1,
             failedAt,
@@ -1276,7 +2157,7 @@ const worker = new Worker<TranscriptionJobData>(
             failedReason: message
           },
           {
-            jobId: `${job.data.jobId}:${Date.now()}`,
+            jobId: `${job.data.jobId}.dlq.${Date.now()}`,
             removeOnComplete: 1000,
             removeOnFail: 1000
           }
