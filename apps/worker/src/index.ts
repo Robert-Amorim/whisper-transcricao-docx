@@ -23,6 +23,7 @@ import {
 } from "./lib/object-storage";
 import {
   isDiarizeModel,
+  isHallucinatedText,
   transcribeWithOpenAi,
   type WhisperSegment
 } from "./lib/whisper";
@@ -1037,13 +1038,29 @@ async function transcribeOpenAiWithChunking(params: {
         timeoutMs: env.OPENAI_TIMEOUT_MS
       });
       const chunkText = chunkTranscription.text.trim();
-      if (chunkText.length > 0) {
+      const chunkIsHallucination = isHallucinatedText(chunkText);
+      if (chunkIsHallucination) {
+        logWorker("warn", "Hallucination detected in chunk output — discarding and resetting context seed.", {
+          request_id: params.requestId,
+          job_id: params.jobId,
+          chunk_index: chunkWindow.index
+        });
+        // Do NOT update previousChunkTailText. Propagating hallucinated text as the
+        // prompt for the next chunk creates a feedback loop that makes the model
+        // repeat the same token indefinitely across the entire transcription.
+        previousChunkTailText = "";
+      } else if (chunkText.length > 0) {
         chunkTexts.push(chunkText);
         // Keep last ~200 chars as context seed for the next chunk
         previousChunkTailText = chunkText.slice(-200);
       }
 
       for (const segment of chunkTranscription.segments) {
+        // Drop segments that are themselves hallucinated repetitions
+        if (isHallucinatedText(segment.text)) {
+          continue;
+        }
+
         const segmentEndRef = segment.endSec ?? segment.startSec ?? 0;
         if (
           chunkWindow.trimOverlapSec > 0 &&
